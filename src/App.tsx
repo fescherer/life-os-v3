@@ -1,22 +1,25 @@
 import { useState } from "react";
 import "./App.css";
 import BackupFeature from "./features/backup";
+import FinancialFeature from "./features/financial";
 import NotesFeature from "./features/notes";
 
-type FeatureId = "notes" | "backup";
+type FeatureId = "financial" | "notes" | "backup";
 
 const features: Array<{ id: FeatureId; label: string }> = [
+  { id: "financial", label: "Financial" },
   { id: "notes", label: "Notes" },
   { id: "backup", label: "Backup" },
 ];
 
 function App() {
-  const [activeFeature, setActiveFeature] = useState<FeatureId>("notes");
+  const [activeFeature, setActiveFeature] = useState<FeatureId>("financial");
 
   return (
     <main className="flex min-h-screen flex-col bg-background text-foreground antialiased">
       <div className="flex flex-1 flex-col-reverse md:flex-row">
         <section className="flex-1 px-6 py-8 md:px-10 md:py-10">
+          {activeFeature === "financial" && <FinancialFeature />}
           {activeFeature === "notes" && <NotesFeature />}
           {activeFeature === "backup" && <BackupFeature />}
         </section>

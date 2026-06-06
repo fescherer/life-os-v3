@@ -17,7 +17,10 @@ struct Note {
 }
 
 fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
     fs::create_dir_all(&data_dir).map_err(|error| error.to_string())?;
 
     Ok(data_dir)
@@ -38,7 +41,12 @@ fn connect(app: &AppHandle) -> Result<Connection, String> {
     let connection = Connection::open(db_path(app)?).map_err(|error| error.to_string())?;
 
     images_dir(app)?;
+    migrate_database(&connection)?;
 
+    Ok(connection)
+}
+
+fn migrate_database(connection: &Connection) -> Result<(), String> {
     connection
         .execute(
             "CREATE TABLE IF NOT EXISTS notes (
@@ -49,7 +57,71 @@ fn connect(app: &AppHandle) -> Result<Connection, String> {
         )
         .map_err(|error| error.to_string())?;
 
-    Ok(connection)
+    connection
+        .execute_batch(
+            "
+            PRAGMA foreign_keys = ON;
+
+            CREATE TABLE IF NOT EXISTS features (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL UNIQUE,
+                description TEXT NOT NULL DEFAULT '',
+                properties TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                feature_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                properties TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS selects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                feature_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                label TEXT NOT NULL,
+                properties TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE,
+                UNIQUE (feature_id, name)
+            );
+
+            CREATE TABLE IF NOT EXISTS select_options (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                select_id INTEGER NOT NULL,
+                label TEXT NOT NULL,
+                value TEXT NOT NULL,
+                position INTEGER NOT NULL DEFAULT 0,
+                properties TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (select_id) REFERENCES selects(id) ON DELETE CASCADE,
+                UNIQUE (select_id, value)
+            );
+            ",
+        )
+        .map_err(|error| error.to_string())?;
+
+    connection
+        .execute(
+            "INSERT OR IGNORE INTO features (title, description, properties)
+            VALUES (?1, ?2, ?3)",
+            params![
+                "Financial",
+                "Track financial data, categories, and selectable metadata.",
+                "{}"
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
 }
 
 fn copy_dir(from: &Path, to: &Path) -> Result<(), String> {
