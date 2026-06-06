@@ -32,28 +32,42 @@ function App() {
   }, []);
 
   return (
-    <main className="container">
-      <h1>SQLite Notes</h1>
+    <main className="min-h-screen bg-zinc-100 px-6 py-[10vh] text-zinc-950 antialiased dark:bg-zinc-800 dark:text-zinc-100">
+      <section className="mx-auto flex max-w-xl flex-col gap-6">
+        <h1 className="text-3xl font-semibold leading-tight">SQLite Notes</h1>
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          addNote();
-        }}
-      >
-        <input
-          value={body}
-          onChange={e => setBody(e.currentTarget.value)}
-          placeholder="Write a note..."
-        />
-        <button type="submit">Save</button>
-      </form>
-      <ul className="notes">
-        {notes.map(note => (
-          <li key={note.id}>{note.body}</li>
-        ))}
-      </ul>
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            addNote();
+          }}
+        >
+          <input
+            className="min-w-0 flex-1 rounded-lg border border-transparent bg-white px-5 py-3 font-medium text-zinc-950 shadow-sm outline-none transition focus:border-blue-600 dark:bg-zinc-950/60 dark:text-white"
+            value={body}
+            onChange={e => setBody(e.currentTarget.value)}
+            placeholder="Write a note..."
+          />
+          <button
+            className="rounded-lg border border-transparent bg-white px-5 py-3 font-medium text-zinc-950 shadow-sm transition hover:border-blue-600 active:border-blue-600 active:bg-zinc-200 dark:bg-zinc-950/60 dark:text-white dark:active:bg-zinc-950/40"
+            type="submit"
+          >
+            Save
+          </button>
+        </form>
+
+        <ul className="grid list-none gap-2 p-0">
+          {notes.map(note => (
+            <li
+              className="rounded-lg border border-zinc-300 bg-white p-3 text-left dark:border-zinc-600 dark:bg-zinc-800"
+              key={note.id}
+            >
+              {note.body}
+            </li>
+          ))}
+        </ul>
+      </section>
     </main>
   );
 }
