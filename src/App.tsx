@@ -1,118 +1,53 @@
-import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
 import "./App.css";
+import BackupFeature from "./features/backup";
+import NotesFeature from "./features/notes";
 
-type Note = {
-  id: number;
-  body: string;
-};
+type FeatureId = "notes" | "backup";
+
+const features: Array<{ id: FeatureId; label: string }> = [
+  { id: "notes", label: "Notes" },
+  { id: "backup", label: "Backup" },
+];
 
 function App() {
-  const [body, setBody] = useState("");
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [backupStatus, setBackupStatus] = useState("");
-
-  async function loadNotes() {
-    setNotes(await invoke<Note[]>("list_notes"));
-  }
-
-  async function addNote() {
-    const trimmedBody = body.trim();
-
-    if (!trimmedBody) {
-      return;
-    }
-
-    await invoke("add_note", { body: trimmedBody });
-    setBody("");
-    await loadNotes();
-  }
-
-  async function exportBackup() {
-    try {
-      const backupPath = await invoke<string>("export_backup");
-      setBackupStatus(`Backup exported to ${backupPath}`);
-    }
-    catch (error) {
-      setBackupStatus(String(error));
-    }
-  }
-
-  async function restoreBackup() {
-    try {
-      const backupPath = await invoke<string>("restore_backup");
-      setBackupStatus(`Backup restored from ${backupPath}`);
-      await loadNotes();
-    }
-    catch (error) {
-      setBackupStatus(String(error));
-    }
-  }
-
-  useEffect(() => {
-    invoke<Note[]>("list_notes").then(setNotes).catch(console.error);
-  }, []);
+  const [activeFeature, setActiveFeature] = useState<FeatureId>("notes");
 
   return (
-    <main className="min-h-screen bg-zinc-100 px-6 py-[10vh] text-zinc-950 antialiased dark:bg-zinc-800 dark:text-zinc-100">
-      <section className="mx-auto flex max-w-xl flex-col gap-6">
-        <h1 className="text-3xl font-semibold leading-tight">SQLite Notes</h1>
+    <main className="flex min-h-screen flex-col bg-background text-foreground antialiased">
+      <div className="flex flex-1 flex-col-reverse md:flex-row">
+        <section className="flex-1 px-6 py-8 md:px-10 md:py-10">
+          {activeFeature === "notes" && <NotesFeature />}
+          {activeFeature === "backup" && <BackupFeature />}
+        </section>
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            className="rounded-lg border border-zinc-300 bg-white px-4 py-2 font-medium text-zinc-950 shadow-sm transition hover:border-blue-600 active:bg-zinc-200 dark:border-zinc-600 dark:bg-zinc-950/60 dark:text-white dark:active:bg-zinc-950/40"
-            onClick={exportBackup}
-            type="button"
-          >
-            Export Backup
-          </button>
-          <button
-            className="rounded-lg border border-zinc-300 bg-white px-4 py-2 font-medium text-zinc-950 shadow-sm transition hover:border-blue-600 active:bg-zinc-200 dark:border-zinc-600 dark:bg-zinc-950/60 dark:text-white dark:active:bg-zinc-950/40"
-            onClick={restoreBackup}
-            type="button"
-          >
-            Restore Backup
-          </button>
-        </div>
+        <aside className="border-b border-border bg-card px-4 py-4 text-card-foreground md:w-56 md:border-b-0 md:border-l">
+          <div className="flex items-center justify-between gap-4 md:block">
+            <h2 className="text-lg font-semibold md:mb-5">Life OS</h2>
+            <nav className="flex gap-2 md:grid">
+              {features.map(feature => (
+                <button
+                  className={[
+                    "rounded-lg px-3 py-2 text-left text-sm font-medium transition",
+                    activeFeature === feature.id
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  ].join(" ")}
+                  key={feature.id}
+                  onClick={() => setActiveFeature(feature.id)}
+                  type="button"
+                >
+                  {feature.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+        </aside>
+      </div>
 
-        {backupStatus && (
-          <p className="m-0 rounded-lg border border-zinc-300 bg-white p-3 text-sm text-zinc-700 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200">
-            {backupStatus}
-          </p>
-        )}
-
-        <form
-          className="flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            addNote();
-          }}
-        >
-          <input
-            className="min-w-0 flex-1 rounded-lg border border-transparent bg-white px-5 py-3 font-medium text-zinc-950 shadow-sm outline-none transition focus:border-blue-600 dark:bg-zinc-950/60 dark:text-white"
-            value={body}
-            onChange={e => setBody(e.currentTarget.value)}
-            placeholder="Write a note..."
-          />
-          <button
-            className="rounded-lg border border-transparent bg-white px-5 py-3 font-medium text-zinc-950 shadow-sm transition hover:border-blue-600 active:border-blue-600 active:bg-zinc-200 dark:bg-zinc-950/60 dark:text-white dark:active:bg-zinc-950/40"
-            type="submit"
-          >
-            Save
-          </button>
-        </form>
-
-        <ul className="grid list-none gap-2 p-0">
-          {notes.map(note => (
-            <li
-              className="rounded-lg border border-zinc-300 bg-white p-3 text-left dark:border-zinc-600 dark:bg-zinc-800"
-              key={note.id}
-            >
-              {note.body}
-            </li>
-          ))}
-        </ul>
-      </section>
+      <footer className="border-t border-border bg-card px-6 py-3 text-center text-xs text-muted-foreground">
+        Created by Fennec Tales
+      </footer>
     </main>
   );
 }
