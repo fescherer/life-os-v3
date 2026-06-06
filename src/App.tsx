@@ -14,9 +14,9 @@ function App() {
 
   return (
     <main className="container">
-      <h1>Welcome to Tauri + React + fe</h1>
+      <h1>Welcome to Tauri + React + Tailwind CSS</h1>
 
-      <div className="row">
+      <div className="row text-amber-300">
         <a href="https://vite.dev" target="_blank">
           <img src="/vite.svg" className="logo vite" alt="Vite logo" />
         </a>
@@ -27,7 +27,7 @@ function App() {
           <img src={reactLogo} className="logo react" alt="React logo" />
         </a>
       </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+      <p className="text-amber-300">Click on the Tauri, Vite, and React logos to learn more.</p>
 
       <form
         className="row"
