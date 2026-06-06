@@ -1,49 +1,59 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+type Note = {
+  id: number;
+  body: string;
+};
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+function App() {
+  const [body, setBody] = useState("");
+  const [notes, setNotes] = useState<Note[]>([]);
+
+  async function loadNotes() {
+    setNotes(await invoke<Note[]>("list_notes"));
   }
+
+  async function addNote() {
+    const trimmedBody = body.trim();
+
+    if (!trimmedBody) {
+      return;
+    }
+
+    await invoke("add_note", { body: trimmedBody });
+    setBody("");
+    await loadNotes();
+  }
+
+  useEffect(() => {
+    invoke<Note[]>("list_notes").then(setNotes).catch(console.error);
+  }, []);
 
   return (
     <main className="container">
-      <h1>Welcome to Tauri + React + Tailwind CSS</h1>
-
-      <div className="row text-amber-300">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p className="text-amber-300">Click on the Tauri, Vite, and React logos to learn more.</p>
+      <h1>SQLite Notes</h1>
 
       <form
         className="row"
         onSubmit={(e) => {
           e.preventDefault();
-          greet();
+          addNote();
         }}
       >
         <input
-          id="greet-input"
-          onChange={e => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
+          value={body}
+          onChange={e => setBody(e.currentTarget.value)}
+          placeholder="Write a note..."
         />
-        <button type="submit">Greet</button>
+        <button type="submit">Save</button>
       </form>
-      <p>{greetMsg}</p>
+      <ul className="notes">
+        {notes.map(note => (
+          <li key={note.id}>{note.body}</li>
+        ))}
+      </ul>
     </main>
   );
 }
