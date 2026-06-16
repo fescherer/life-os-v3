@@ -12,9 +12,14 @@ import {
   Store,
   Trash2,
   TrendingUp,
-  X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../../components/ui/dialog";
 
 type AssetRegisterType = "dividend" | "buy" | "sell";
 type DataSection = "assets" | "banks" | "types";
@@ -1018,17 +1023,21 @@ function Modal({
   title: string;
 }) {
   return (
-    <div className="fixed inset-0 z-20 flex items-center justify-center bg-primary/25 p-6">
-      <section className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-md border border-border bg-sidebar p-5 shadow-lg">
-        <header className="mb-5 flex items-center justify-between border-b border-border pb-4">
-          <h2 className="text-base">{title}</h2>
-          <button className="text-muted-foreground" onClick={onClose} type="button">
-            <X aria-hidden="true" className="size-5" />
-          </button>
-        </header>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
         {children}
-      </section>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
