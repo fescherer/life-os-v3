@@ -4,12 +4,12 @@
   --font-mono: "JetBrains Mono", "Courier New", monospace;
   --color-background: #faf5ed;
   --color-foreground: #71665d;
-  --color-card: #fffaf5;
+  --color-card: #fffafe;
   --color-card-foreground: #71665d;
-  --color-popover: #fffaf5;
+  --color-popover: #fffafe;
   --color-popover-foreground: #71665d;
   --color-primary: #4f4749;
-  --color-primary-foreground: #fffaf5;
+  --color-primary-foreground: #fffafe;
   --color-secondary: #eee6dd;
   --color-secondary-foreground: #71665d;
   --color-sidebar: #fffafe;
@@ -19,7 +19,7 @@
   --color-accent: #e5ddd4;
   --color-accent-foreground: #4f4749;
   --color-destructive: #b45245;
-  --color-destructive-foreground: #fffaf5;
+  --color-destructive-foreground: #fffafe;
   --color-border: #cfc4bd;
   --color-input: #cfc4bd;
   --color-ring: #71665d;

@@ -18,6 +18,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { DatePicker } from "../../components/ui/date-picker";
 
 type FinancialEntryType = "income" | "expense" | "investment";
 type ChartRange = "years" | "12-months" | "6-months" | "30-days";
@@ -441,12 +442,7 @@ function EntryDialog({
         <div className="grid gap-6 md:grid-cols-2">
           <label className="grid gap-3 text-sm text-muted-foreground">
             Data
-            <input
-              className="h-9 rounded-md border border-border bg-sidebar px-3 text-xs text-foreground outline-none"
-              onChange={event => setDate(event.currentTarget.value)}
-              type="date"
-              value={date}
-            />
+            <DatePicker onChange={setDate} value={date} />
           </label>
           <label className="grid gap-3 text-sm text-muted-foreground">
             Banco
