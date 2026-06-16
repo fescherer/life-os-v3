@@ -9,8 +9,18 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 type FinancialEntryType = "income" | "expense" | "investment";
+type ChartRange = "years" | "12-months" | "6-months" | "30-days";
 
 type FinancialEntry = {
   id: string;
@@ -38,10 +48,24 @@ type FinancialFeatureProps = {
   onCloseEntryDialog: () => void;
 };
 
+type FinancialChartPoint = {
+  expense: number;
+  income: number;
+  label: string;
+  sortKey: string;
+};
+
 const entryTypes: Array<{ icon: typeof ArrowUp; label: string; value: FinancialEntryType }> = [
   { icon: ArrowUp, label: "Income", value: "income" },
   { icon: ArrowDown, label: "Expense", value: "expense" },
   { icon: Landmark, label: "Investments", value: "investment" },
+];
+
+const chartRangeOptions: Array<{ label: string; value: ChartRange }> = [
+  { label: "Anos", value: "years" },
+  { label: "12 meses", value: "12-months" },
+  { label: "6 meses", value: "6-months" },
+  { label: "30 dias", value: "30-days" },
 ];
 
 const typeStyles: Record<FinancialEntryType, string> = {
@@ -58,6 +82,7 @@ function FinancialFeature({
 }: FinancialFeatureProps) {
   const [banks, setBanks] = useState<BankOption[]>([]);
   const [entries, setEntries] = useState<FinancialEntry[]>([]);
+  const [chartRange, setChartRange] = useState<ChartRange>("12-months");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
 
@@ -109,6 +134,11 @@ function FinancialFeature({
     return { expense, income, investment };
   }, [entries]);
 
+  const chartData = useMemo(
+    () => buildFinancialChartData(entries, chartRange),
+    [chartRange, entries],
+  );
+
   async function handleEntryCreated() {
     await loadFinancialData();
     onCloseEntryDialog();
@@ -126,20 +156,47 @@ function FinancialFeature({
           <section className="rounded-md border border-border bg-sidebar p-3">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <h2 className="text-base text-foreground">Balanço do patrimônio</h2>
-              <select className="h-8 rounded-md border border-border bg-sidebar px-3 text-xs text-foreground outline-none">
-                <option>12 meses</option>
-                <option>6 meses</option>
-                <option>30 dias</option>
+              <select
+                className="h-8 rounded-md border border-border bg-sidebar px-3 text-xs text-foreground outline-none"
+                onChange={event => setChartRange(event.currentTarget.value as ChartRange)}
+                value={chartRange}
+              >
+                {chartRangeOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
-            <div className="mt-4 flex h-40 items-end gap-3 rounded-md border border-border px-2 pb-3">
-              {Array.from({ length: 12 }, (_, index) => (
-                <div
-                  className="w-full rounded-sm bg-primary"
-                  key={index}
-                  style={{ height: `${28 + ((index * 19) % 88)}px` }}
-                />
-              ))}
+            <div className="mt-4 h-52 rounded-md border border-border px-2 py-3">
+              <ResponsiveContainer height="100%" width="100%">
+                <BarChart data={chartData} margin={{ bottom: 0, left: 0, right: 8, top: 8 }}>
+                  <CartesianGrid stroke="#eee6dd" vertical={false} />
+                  <XAxis
+                    axisLine={false}
+                    dataKey="label"
+                    interval={chartRange === "30-days" ? 4 : 0}
+                    tick={{ fill: "#9b8f86", fontSize: 10 }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tick={{ fill: "#9b8f86", fontSize: 10 }}
+                    tickFormatter={formatCompactCurrency}
+                    tickLine={false}
+                    width={48}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "#eee6dd" }}
+                    formatter={(value, name) => [
+                      formatCurrency(Number(value) * 100),
+                      name === "income" ? "Income" : "Expenses",
+                    ]}
+                  />
+                  <Bar dataKey="income" fill="#86efac" name="Income" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="expense" fill="#fca5a5" name="Expenses" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </section>
 
@@ -616,11 +673,165 @@ function totalForBank(entries: FinancialEntry[], bank: string) {
     }, 0);
 }
 
+function buildFinancialChartData(entries: FinancialEntry[], range: ChartRange): FinancialChartPoint[] {
+  if (range === "years") {
+    return buildYearlyChartData(entries);
+  }
+
+  if (range === "30-days") {
+    return buildDailyChartData(entries);
+  }
+
+  return buildMonthlyChartData(entries, range === "12-months" ? 12 : 6);
+}
+
+function buildYearlyChartData(entries: FinancialEntry[]): FinancialChartPoint[] {
+  const entryYears = entries.map(entry => parseEntryDate(entry.date).getFullYear());
+  const currentYear = new Date().getFullYear();
+  const firstYear = entryYears.length > 0 ? Math.min(...entryYears) : currentYear;
+  const lastYear = Math.max(currentYear, ...entryYears);
+  const points = new Map<string, FinancialChartPoint>();
+
+  for (let year = firstYear; year <= lastYear; year += 1) {
+    const sortKey = String(year);
+
+    points.set(sortKey, {
+      expense: 0,
+      income: 0,
+      label: sortKey,
+      sortKey,
+    });
+  }
+
+  for (const entry of entries) {
+    if (entry.type !== "income" && entry.type !== "expense") {
+      continue;
+    }
+
+    const sortKey = String(parseEntryDate(entry.date).getFullYear());
+    const point = points.get(sortKey);
+
+    if (!point) {
+      continue;
+    }
+
+    point[entry.type] += entry.value / 100;
+  }
+
+  return Array.from(points.values()).sort((first, second) =>
+    first.sortKey.localeCompare(second.sortKey),
+  );
+}
+
+function buildMonthlyChartData(entries: FinancialEntry[], monthCount: number): FinancialChartPoint[] {
+  const today = new Date();
+  const firstMonth = new Date(today.getFullYear(), today.getMonth() - monthCount + 1, 1);
+  const points = new Map<string, FinancialChartPoint>();
+
+  for (let index = 0; index < monthCount; index += 1) {
+    const date = new Date(firstMonth.getFullYear(), firstMonth.getMonth() + index, 1);
+    const sortKey = formatMonthKey(date);
+
+    points.set(sortKey, {
+      expense: 0,
+      income: 0,
+      label: new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(date),
+      sortKey,
+    });
+  }
+
+  for (const entry of entries) {
+    if (entry.type !== "income" && entry.type !== "expense") {
+      continue;
+    }
+
+    const date = parseEntryDate(entry.date);
+    const sortKey = formatMonthKey(date);
+    const point = points.get(sortKey);
+
+    if (!point) {
+      continue;
+    }
+
+    point[entry.type] += entry.value / 100;
+  }
+
+  return Array.from(points.values()).sort((first, second) =>
+    first.sortKey.localeCompare(second.sortKey),
+  );
+}
+
+function buildDailyChartData(entries: FinancialEntry[]): FinancialChartPoint[] {
+  const today = new Date();
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29);
+  const points = new Map<string, FinancialChartPoint>();
+
+  for (let index = 0; index < 30; index += 1) {
+    const date = new Date(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate() + index);
+    const sortKey = formatDayKey(date);
+
+    points.set(sortKey, {
+      expense: 0,
+      income: 0,
+      label: new Intl.DateTimeFormat("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+      }).format(date),
+      sortKey,
+    });
+  }
+
+  for (const entry of entries) {
+    if (entry.type !== "income" && entry.type !== "expense") {
+      continue;
+    }
+
+    const date = parseEntryDate(entry.date);
+    const sortKey = formatDayKey(date);
+    const point = points.get(sortKey);
+
+    if (!point) {
+      continue;
+    }
+
+    point[entry.type] += entry.value / 100;
+  }
+
+  return Array.from(points.values()).sort((first, second) =>
+    first.sortKey.localeCompare(second.sortKey),
+  );
+}
+
+function parseEntryDate(value: string) {
+  return new Date(`${value}T00:00:00`);
+}
+
+function formatMonthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatDayKey(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat("pt-BR", {
     currency: "BRL",
     style: "currency",
   }).format(cents / 100);
+}
+
+function formatCompactCurrency(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    compactDisplay: "short",
+    currency: "BRL",
+    notation: "compact",
+    style: "currency",
+  }).format(value);
 }
 
 function formatDisplayDate(value: string) {

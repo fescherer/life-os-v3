@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import type { LucideIcon } from "lucide-react";
+import AssetsFeature from "./features/assets";
 import BackupFeature from "./features/backup";
 import FinancialFeature from "./features/financial";
 import NotesFeature from "./features/notes";
@@ -112,6 +113,8 @@ const featureTitles: Record<FeatureId, { title: string; description: string }> =
 
 function App() {
   const [activeFeature, setActiveFeature] = useState<FeatureId>("financial");
+  const [isAssetsDataOpen, setIsAssetsDataOpen] = useState(false);
+  const [isAssetsEntryOpen, setIsAssetsEntryOpen] = useState(false);
   const [isFinancialDataOpen, setIsFinancialDataOpen] = useState(false);
   const [isFinancialEntryOpen, setIsFinancialEntryOpen] = useState(false);
   const activeTitle = featureTitles[activeFeature];
@@ -173,11 +176,18 @@ function App() {
               </p>
             </div>
 
-            {activeFeature === "financial" && (
+            {(activeFeature === "financial" || activeFeature === "assets") && (
               <div className="flex shrink-0 gap-5">
                 <button
                   className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-secondary px-4 text-sm text-secondary-foreground shadow-sm transition hover:bg-accent"
-                  onClick={() => setIsFinancialDataOpen(true)}
+                  onClick={() => {
+                    if (activeFeature === "assets") {
+                      setIsAssetsDataOpen(true);
+                      return;
+                    }
+
+                    setIsFinancialDataOpen(true);
+                  }}
                   type="button"
                 >
                   <Download aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
@@ -185,7 +195,14 @@ function App() {
                 </button>
                 <button
                   className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-primary px-4 text-sm text-primary-foreground shadow-sm transition hover:bg-primary/90"
-                  onClick={() => setIsFinancialEntryOpen(true)}
+                  onClick={() => {
+                    if (activeFeature === "assets") {
+                      setIsAssetsEntryOpen(true);
+                      return;
+                    }
+
+                    setIsFinancialEntryOpen(true);
+                  }}
                   type="button"
                 >
                   <BadgePlus aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
@@ -196,6 +213,14 @@ function App() {
           </header>
 
           <div className="pt-6">
+            {activeFeature === "assets" && (
+              <AssetsFeature
+                isDataDialogOpen={isAssetsDataOpen}
+                isEntryDialogOpen={isAssetsEntryOpen}
+                onCloseDataDialog={() => setIsAssetsDataOpen(false)}
+                onCloseEntryDialog={() => setIsAssetsEntryOpen(false)}
+              />
+            )}
             {activeFeature === "financial" && (
               <FinancialFeature
                 isDataDialogOpen={isFinancialDataOpen}

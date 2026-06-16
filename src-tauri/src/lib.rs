@@ -67,6 +67,77 @@ struct UpdateBankOptionInput {
     color: String,
 }
 
+#[derive(Deserialize)]
+struct AssetInput {
+    ticker: String,
+    asset_type: String,
+    full_name: String,
+}
+
+#[derive(Deserialize)]
+struct UpdateAssetInput {
+    id: String,
+    ticker: String,
+    asset_type: String,
+    full_name: String,
+}
+
+#[derive(Deserialize, Serialize)]
+struct AssetData {
+    ticker: String,
+    #[serde(rename = "type")]
+    asset_type: String,
+    full_name: String,
+}
+
+#[derive(Serialize)]
+struct Asset {
+    id: String,
+    created_at: String,
+    updated_at: String,
+    #[serde(flatten)]
+    data: AssetData,
+    type_label: String,
+    type_color: String,
+}
+
+#[derive(Deserialize)]
+struct AssetRegisterInput {
+    register_type: String,
+    date: String,
+    bank: String,
+    quantity: f64,
+    price: i64,
+    asset: String,
+}
+
+#[derive(Deserialize, Serialize)]
+struct AssetRegisterData {
+    #[serde(rename = "type")]
+    register_type: String,
+    date: String,
+    bank: String,
+    quantity: f64,
+    price: i64,
+    asset: String,
+}
+
+#[derive(Serialize)]
+struct AssetRegister {
+    id: String,
+    created_at: String,
+    updated_at: String,
+    #[serde(flatten)]
+    data: AssetRegisterData,
+    bank_label: String,
+    bank_color: String,
+    asset_ticker: String,
+    asset_full_name: String,
+    asset_type: String,
+    asset_type_label: String,
+    asset_type_color: String,
+}
+
 fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let data_dir = app
         .path()
@@ -165,6 +236,33 @@ fn migrate_financial_database(connection: &Connection) -> Result<(), String> {
         .execute(
             "INSERT OR IGNORE INTO selects (id, options) VALUES ('banks', ?1)",
             params![default_banks],
+        )
+        .map_err(|error| error.to_string())?;
+
+    let default_asset_banks = json!([
+        { "value": "asset-bank-nubank", "label": "Nubank", "color": "#820ad1" },
+        { "value": "asset-bank-inter", "label": "Inter", "color": "#ff7a00" }
+    ])
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT OR IGNORE INTO selects (id, options) VALUES ('asset_banks', ?1)",
+            params![default_asset_banks],
+        )
+        .map_err(|error| error.to_string())?;
+
+    let default_asset_types = json!([
+        { "value": "fii", "label": "FII - Fundo Imobiliário", "color": "#6aa06a" },
+        { "value": "stock", "label": "STOCK - Ação", "color": "#4f4749" },
+        { "value": "etf", "label": "ETF", "color": "#4f80c0" }
+    ])
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT OR IGNORE INTO selects (id, options) VALUES ('asset_types', ?1)",
+            params![default_asset_types],
         )
         .map_err(|error| error.to_string())?;
 
@@ -434,6 +532,368 @@ fn remove_bank_option(app: AppHandle, value: String) -> Result<Vec<SelectOption>
     Ok(options)
 }
 
+#[tauri::command]
+fn list_asset_bank_options(app: AppHandle) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+
+    load_select_options(&connection, "asset_banks")
+}
+
+#[tauri::command]
+fn add_asset_bank_option(app: AppHandle, bank: BankOptionInput) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, "asset_banks")?;
+    let label = bank.label.trim();
+
+    if label.is_empty() {
+        return Err("Bank label is required".to_string());
+    }
+
+    options.push(SelectOption {
+        value: format!("asset-bank-{}", current_timestamp_id()?),
+        label: label.to_string(),
+        color: normalize_color(&bank.color),
+    });
+
+    save_select_options(&connection, "asset_banks", &options)?;
+
+    Ok(options)
+}
+
+#[tauri::command]
+fn update_asset_bank_option(
+    app: AppHandle,
+    bank: UpdateBankOptionInput,
+) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, "asset_banks")?;
+    let label = bank.label.trim();
+
+    if label.is_empty() {
+        return Err("Bank label is required".to_string());
+    }
+
+    let option = options
+        .iter_mut()
+        .find(|option| option.value == bank.value)
+        .ok_or_else(|| "Bank does not exist".to_string())?;
+
+    option.label = label.to_string();
+    option.color = normalize_color(&bank.color);
+    save_select_options(&connection, "asset_banks", &options)?;
+
+    Ok(options)
+}
+
+#[tauri::command]
+fn remove_asset_bank_option(app: AppHandle, value: String) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, "asset_banks")?;
+
+    if is_feature_data_value_used(&connection, "assets_register", "bank", &value)? {
+        return Err("This bank is used by asset launches".to_string());
+    }
+
+    options.retain(|option| option.value != value);
+    save_select_options(&connection, "asset_banks", &options)?;
+
+    Ok(options)
+}
+
+#[tauri::command]
+fn list_asset_type_options(app: AppHandle) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+
+    load_select_options(&connection, "asset_types")
+}
+
+#[tauri::command]
+fn add_asset_type_option(app: AppHandle, asset_type: BankOptionInput) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, "asset_types")?;
+    let label = asset_type.label.trim();
+
+    if label.is_empty() {
+        return Err("Type label is required".to_string());
+    }
+
+    options.push(SelectOption {
+        value: format!("asset-type-{}", current_timestamp_id()?),
+        label: label.to_string(),
+        color: normalize_color(&asset_type.color),
+    });
+
+    save_select_options(&connection, "asset_types", &options)?;
+
+    Ok(options)
+}
+
+#[tauri::command]
+fn update_asset_type_option(
+    app: AppHandle,
+    asset_type: UpdateBankOptionInput,
+) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, "asset_types")?;
+    let label = asset_type.label.trim();
+
+    if label.is_empty() {
+        return Err("Type label is required".to_string());
+    }
+
+    let option = options
+        .iter_mut()
+        .find(|option| option.value == asset_type.value)
+        .ok_or_else(|| "Type does not exist".to_string())?;
+
+    option.label = label.to_string();
+    option.color = normalize_color(&asset_type.color);
+    save_select_options(&connection, "asset_types", &options)?;
+
+    Ok(options)
+}
+
+#[tauri::command]
+fn remove_asset_type_option(app: AppHandle, value: String) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, "asset_types")?;
+
+    if is_feature_data_value_used(&connection, "asset", "type", &value)? {
+        return Err("This type is used by assets".to_string());
+    }
+
+    options.retain(|option| option.value != value);
+    save_select_options(&connection, "asset_types", &options)?;
+
+    Ok(options)
+}
+
+#[tauri::command]
+fn list_assets(app: AppHandle) -> Result<Vec<Asset>, String> {
+    let connection = connect(&app)?;
+
+    load_assets(&connection)
+}
+
+#[tauri::command]
+fn add_asset(app: AppHandle, asset: AssetInput) -> Result<(), String> {
+    let connection = connect(&app)?;
+    let asset_types = load_select_options(&connection, "asset_types")?;
+    let ticker = normalize_ticker(&asset.ticker)?;
+    let full_name = asset.full_name.trim();
+
+    if full_name.is_empty() {
+        return Err("Asset full name is required".to_string());
+    }
+
+    if !asset_types
+        .iter()
+        .any(|option| option.value == asset.asset_type)
+    {
+        return Err("Selected asset type does not exist".to_string());
+    }
+
+    if asset_ticker_exists(&connection, &ticker, None)? {
+        return Err("Asset ticker already exists".to_string());
+    }
+
+    let data = json!({
+        "ticker": ticker,
+        "type": asset.asset_type,
+        "full_name": full_name
+    })
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT INTO features (id, feature, data) VALUES (?1, 'asset', ?2)",
+            params![format!("asset-{}", current_timestamp_id()?), data],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn update_asset(app: AppHandle, asset: UpdateAssetInput) -> Result<(), String> {
+    let connection = connect(&app)?;
+    let asset_types = load_select_options(&connection, "asset_types")?;
+    let ticker = normalize_ticker(&asset.ticker)?;
+    let full_name = asset.full_name.trim();
+
+    if full_name.is_empty() {
+        return Err("Asset full name is required".to_string());
+    }
+
+    if !asset_types
+        .iter()
+        .any(|option| option.value == asset.asset_type)
+    {
+        return Err("Selected asset type does not exist".to_string());
+    }
+
+    if asset_ticker_exists(&connection, &ticker, Some(&asset.id))? {
+        return Err("Asset ticker already exists".to_string());
+    }
+
+    let data = json!({
+        "ticker": ticker,
+        "type": asset.asset_type,
+        "full_name": full_name
+    })
+    .to_string();
+
+    let updated = connection
+        .execute(
+            "UPDATE features
+            SET data = ?1, updated_at = CURRENT_TIMESTAMP
+            WHERE feature = 'asset' AND id = ?2",
+            params![data, asset.id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if updated == 0 {
+        return Err("Asset does not exist".to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_asset(app: AppHandle, id: String) -> Result<(), String> {
+    let connection = connect(&app)?;
+
+    if is_feature_data_value_used(&connection, "assets_register", "asset", &id)? {
+        return Err("This asset is used by launches".to_string());
+    }
+
+    connection
+        .execute(
+            "DELETE FROM features WHERE feature = 'asset' AND id = ?1",
+            params![id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn list_asset_registers(app: AppHandle) -> Result<Vec<AssetRegister>, String> {
+    let connection = connect(&app)?;
+    let assets = load_assets(&connection)?;
+    let bank_options = load_select_options(&connection, "asset_banks")?;
+    let type_options = load_select_options(&connection, "asset_types")?;
+    let mut statement = connection
+        .prepare(
+            "SELECT id, data, created_at, updated_at
+            FROM features
+            WHERE feature = 'assets_register'
+            ORDER BY json_extract(data, '$.date') DESC, created_at DESC",
+        )
+        .map_err(|error| error.to_string())?;
+
+    let registers = statement
+        .query_map([], |row| {
+            let data_json: String = row.get(1)?;
+            let data = serde_json::from_str::<AssetRegisterData>(&data_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    1,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+            let bank = bank_options
+                .iter()
+                .find(|option| option.value == data.bank)
+                .cloned();
+            let asset = assets.iter().find(|asset| asset.id == data.asset);
+            let asset_type = asset.and_then(|asset| {
+                type_options
+                    .iter()
+                    .find(|option| option.value == asset.data.asset_type)
+            });
+
+            Ok(AssetRegister {
+                id: row.get(0)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+                bank_label: bank
+                    .as_ref()
+                    .map(|option| option.label.clone())
+                    .unwrap_or_else(|| data.bank.clone()),
+                bank_color: bank
+                    .as_ref()
+                    .map(|option| option.color.clone())
+                    .unwrap_or_else(|| "#4f4749".to_string()),
+                asset_ticker: asset
+                    .map(|asset| asset.data.ticker.clone())
+                    .unwrap_or_else(|| data.asset.clone()),
+                asset_full_name: asset
+                    .map(|asset| asset.data.full_name.clone())
+                    .unwrap_or_default(),
+                asset_type: asset
+                    .map(|asset| asset.data.asset_type.clone())
+                    .unwrap_or_default(),
+                asset_type_label: asset_type
+                    .map(|option| option.label.clone())
+                    .unwrap_or_default(),
+                asset_type_color: asset_type
+                    .map(|option| option.color.clone())
+                    .unwrap_or_else(|| "#4f4749".to_string()),
+                data,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    Ok(registers)
+}
+
+#[tauri::command]
+fn add_asset_register(app: AppHandle, register: AssetRegisterInput) -> Result<(), String> {
+    validate_asset_register_type(&register.register_type)?;
+
+    if register.quantity <= 0.0 {
+        return Err("Quantity must be greater than zero".to_string());
+    }
+
+    if register.price <= 0 {
+        return Err("Price must be greater than zero".to_string());
+    }
+
+    let connection = connect(&app)?;
+    let banks = load_select_options(&connection, "asset_banks")?;
+    let assets = load_assets(&connection)?;
+
+    if !banks.iter().any(|option| option.value == register.bank) {
+        return Err("Selected bank does not exist".to_string());
+    }
+
+    if !assets.iter().any(|asset| asset.id == register.asset) {
+        return Err("Selected asset does not exist".to_string());
+    }
+
+    let data = json!({
+        "type": register.register_type,
+        "date": register.date,
+        "bank": register.bank,
+        "quantity": register.quantity,
+        "price": register.price,
+        "asset": register.asset
+    })
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT INTO features (id, feature, data) VALUES (?1, 'assets_register', ?2)",
+            params![format!("assets-register-{}", current_timestamp_id()?), data],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
 fn validate_entry_type(entry_type: &str) -> Result<(), String> {
     match entry_type {
         "income" | "expense" | "investment" => Ok(()),
@@ -442,10 +902,18 @@ fn validate_entry_type(entry_type: &str) -> Result<(), String> {
 }
 
 fn load_bank_options(connection: &Connection) -> Result<Vec<SelectOption>, String> {
+    load_select_options(connection, "banks")
+}
+
+fn save_bank_options(connection: &Connection, options: &[SelectOption]) -> Result<(), String> {
+    save_select_options(connection, "banks", options)
+}
+
+fn load_select_options(connection: &Connection, id: &str) -> Result<Vec<SelectOption>, String> {
     let options_json = connection
         .query_row(
-            "SELECT options FROM selects WHERE id = 'banks'",
-            [],
+            "SELECT options FROM selects WHERE id = ?1",
+            params![id],
             |row| row.get::<_, String>(0),
         )
         .map_err(|error| error.to_string())?;
@@ -453,15 +921,19 @@ fn load_bank_options(connection: &Connection) -> Result<Vec<SelectOption>, Strin
     serde_json::from_str(&options_json).map_err(|error| error.to_string())
 }
 
-fn save_bank_options(connection: &Connection, options: &[SelectOption]) -> Result<(), String> {
+fn save_select_options(
+    connection: &Connection,
+    id: &str,
+    options: &[SelectOption],
+) -> Result<(), String> {
     let options_json = serde_json::to_string(options).map_err(|error| error.to_string())?;
 
     connection
         .execute(
             "UPDATE selects
             SET options = ?1, updated_at = CURRENT_TIMESTAMP
-            WHERE id = 'banks'",
-            params![options_json],
+            WHERE id = ?2",
+            params![options_json, id],
         )
         .map_err(|error| error.to_string())?;
 
@@ -482,6 +954,115 @@ fn is_bank_used(connection: &Connection, value: &str) -> Result<bool, String> {
         .map_err(|error| error.to_string())?;
 
     Ok(used == 1)
+}
+
+fn is_feature_data_value_used(
+    connection: &Connection,
+    feature: &str,
+    key: &str,
+    value: &str,
+) -> Result<bool, String> {
+    let used = connection
+        .query_row(
+            &format!(
+                "SELECT EXISTS (
+                    SELECT 1 FROM features
+                    WHERE feature = ?1
+                    AND json_extract(data, '$.{key}') = ?2
+                )"
+            ),
+            params![feature, value],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(used == 1)
+}
+
+fn load_assets(connection: &Connection) -> Result<Vec<Asset>, String> {
+    let type_options = load_select_options(connection, "asset_types")?;
+    let mut statement = connection
+        .prepare(
+            "SELECT id, data, created_at, updated_at
+            FROM features
+            WHERE feature = 'asset'
+            ORDER BY json_extract(data, '$.ticker') ASC",
+        )
+        .map_err(|error| error.to_string())?;
+
+    let assets = statement
+        .query_map([], |row| {
+            let data_json: String = row.get(1)?;
+            let data = serde_json::from_str::<AssetData>(&data_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    1,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+            let asset_type = type_options
+                .iter()
+                .find(|option| option.value == data.asset_type)
+                .cloned();
+
+            Ok(Asset {
+                id: row.get(0)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+                type_label: asset_type
+                    .as_ref()
+                    .map(|option| option.label.clone())
+                    .unwrap_or_else(|| data.asset_type.clone()),
+                type_color: asset_type
+                    .as_ref()
+                    .map(|option| option.color.clone())
+                    .unwrap_or_else(|| "#4f4749".to_string()),
+                data,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    Ok(assets)
+}
+
+fn asset_ticker_exists(
+    connection: &Connection,
+    ticker: &str,
+    except_id: Option<&str>,
+) -> Result<bool, String> {
+    let used = connection
+        .query_row(
+            "SELECT EXISTS (
+                SELECT 1 FROM features
+                WHERE feature = 'asset'
+                AND upper(json_extract(data, '$.ticker')) = ?1
+                AND (?2 IS NULL OR id != ?2)
+            )",
+            params![ticker, except_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(used == 1)
+}
+
+fn normalize_ticker(ticker: &str) -> Result<String, String> {
+    let ticker = ticker.trim().to_uppercase();
+
+    if ticker.is_empty() {
+        return Err("Ticker is required".to_string());
+    }
+
+    Ok(ticker)
+}
+
+fn validate_asset_register_type(register_type: &str) -> Result<(), String> {
+    match register_type {
+        "dividend" | "buy" | "sell" => Ok(()),
+        _ => Err("Invalid asset launch type".to_string()),
+    }
 }
 
 fn normalize_color(color: &str) -> String {
@@ -563,6 +1144,20 @@ pub fn run() {
             add_bank_option,
             update_bank_option,
             remove_bank_option,
+            list_asset_bank_options,
+            add_asset_bank_option,
+            update_asset_bank_option,
+            remove_asset_bank_option,
+            list_asset_type_options,
+            add_asset_type_option,
+            update_asset_type_option,
+            remove_asset_type_option,
+            list_assets,
+            add_asset,
+            update_asset,
+            remove_asset,
+            list_asset_registers,
+            add_asset_register,
             export_backup,
             restore_backup
         ])
