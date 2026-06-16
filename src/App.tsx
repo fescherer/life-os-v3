@@ -1,54 +1,216 @@
+import {
+  Archive,
+  BadgePlus,
+  Bell,
+  Box,
+  Calendar,
+  CircleDollarSign,
+  DollarSign,
+  Download,
+  Home,
+  Landmark,
+  PencilLine,
+  Settings,
+  Sparkles,
+  Warehouse,
+} from "lucide-react";
 import { useState } from "react";
-import "./App.css";
+import type { LucideIcon } from "lucide-react";
 import BackupFeature from "./features/backup";
 import FinancialFeature from "./features/financial";
 import NotesFeature from "./features/notes";
 
-type FeatureId = "financial" | "notes" | "backup";
+type FeatureId
+  = | "home"
+    | "notes"
+    | "habits"
+    | "financial"
+    | "assets"
+    | "coin-collection"
+    | "gogo-collection"
+    | "packaging"
+    | "reminders"
+    | "reviews"
+    | "warehouse"
+    | "configuration"
+    | "backup";
 
-const features: Array<{ id: FeatureId; label: string }> = [
-  { id: "financial", label: "Financial" },
-  { id: "notes", label: "Notes" },
-  { id: "backup", label: "Backup" },
+type NavItem = {
+  id: FeatureId;
+  icon: LucideIcon;
+  label: string;
+};
+
+const navItems: NavItem[] = [
+  { id: "home", icon: Home, label: "Home" },
+  { id: "notes", icon: PencilLine, label: "Notes" },
+  { id: "habits", icon: Sparkles, label: "Habits" },
+  { id: "financial", icon: DollarSign, label: "Financial" },
+  { id: "assets", icon: Landmark, label: "Assets" },
+  { id: "coin-collection", icon: CircleDollarSign, label: "Coin Collection" },
+  { id: "gogo-collection", icon: Calendar, label: "Gogo Collection" },
+  { id: "packaging", icon: Box, label: "Packaging" },
+  { id: "reminders", icon: Bell, label: "Reminders" },
+  { id: "reviews", icon: Archive, label: "Reviews" },
+  { id: "warehouse", icon: Warehouse, label: "Warehouse" },
 ];
+
+const featureTitles: Record<FeatureId, { title: string; description: string }> = {
+  "assets": {
+    title: "Assets page",
+    description: "Manage your tracked assets",
+  },
+  "backup": {
+    title: "Backup page",
+    description: "Export or restore your Life OS data",
+  },
+  "configuration": {
+    title: "Configuration page",
+    description: "Adjust your workspace settings",
+  },
+  "coin-collection": {
+    title: "Coin Collection page",
+    description: "Organize your coin collection",
+  },
+  "financial": {
+    title: "Financial page",
+    description: "Manage your expenses and incomes",
+  },
+  "gogo-collection": {
+    title: "Gogo Collection page",
+    description: "Catalog your Gogo collection",
+  },
+  "habits": {
+    title: "Habits page",
+    description: "Track habits and routines",
+  },
+  "home": {
+    title: "Home page",
+    description: "Your Life OS dashboard",
+  },
+  "notes": {
+    title: "Notes page",
+    description: "Quick SQLite-backed notes",
+  },
+  "packaging": {
+    title: "Packaging page",
+    description: "Manage packages and materials",
+  },
+  "reminders": {
+    title: "Reminders page",
+    description: "Review upcoming reminders",
+  },
+  "reviews": {
+    title: "Reviews page",
+    description: "Keep track of reviews",
+  },
+  "warehouse": {
+    title: "Warehouse page",
+    description: "Manage stored items",
+  },
+};
 
 function App() {
   const [activeFeature, setActiveFeature] = useState<FeatureId>("financial");
+  const [isFinancialDataOpen, setIsFinancialDataOpen] = useState(false);
+  const [isFinancialEntryOpen, setIsFinancialEntryOpen] = useState(false);
+  const activeTitle = featureTitles[activeFeature];
 
   return (
-    <main className="flex min-h-screen flex-col bg-background text-foreground antialiased">
-      <div className="flex flex-1 flex-col-reverse md:flex-row">
-        <section className="flex-1 px-6 py-8 md:px-10 md:py-10">
-          {activeFeature === "financial" && <FinancialFeature />}
-          {activeFeature === "notes" && <NotesFeature />}
-          {activeFeature === "backup" && <BackupFeature />}
-        </section>
+    <main className="flex min-h-screen flex-col bg-background font-mono font-bold text-foreground antialiased">
+      <div className="flex min-h-0 flex-1 gap-3 px-3 py-2">
+        <aside className="flex w-40 shrink-0 flex-col rounded border border-border bg-sidebar px-2 py-4 text-sidebar-foreground">
+          <img
+            alt="Life OS"
+            className="mb-6 h-auto w-36"
+            src="/Logo.svg"
+          />
 
-        <aside className="border-b border-border bg-card px-4 py-4 text-card-foreground md:w-56 md:border-b-0 md:border-l">
-          <div className="flex items-center justify-between gap-4 md:block">
-            <h2 className="text-lg font-semibold md:mb-5">Life OS</h2>
-            <nav className="flex gap-2 md:grid">
-              {features.map(feature => (
+          <nav className="flex flex-1 flex-col gap-3.5">
+            {navItems.map((item) => {
+              const NavIcon = item.icon;
+
+              return (
                 <button
                   className={[
-                    "rounded-lg px-3 py-2 text-left text-sm font-medium transition",
-                    activeFeature === feature.id
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    "flex h-7 w-full items-center gap-3 rounded-md px-2 text-left text-xs leading-none transition",
+                    activeFeature === item.id
+                      ? "bg-primary text-primary-foreground"
+                      : "text-sidebar-foreground hover:bg-secondary hover:text-foreground",
                   ].join(" ")}
-                  key={feature.id}
-                  onClick={() => setActiveFeature(feature.id)}
+                  key={item.id}
+                  onClick={() => setActiveFeature(item.id)}
                   type="button"
                 >
-                  {feature.label}
+                  <NavIcon aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
+                  <span className="truncate">{item.label}</span>
                 </button>
-              ))}
-            </nav>
-          </div>
+              );
+            })}
+          </nav>
+
+          <button
+            className={[
+              "flex h-7 w-full items-center gap-3 rounded-md px-2 text-left text-xs leading-none transition",
+              activeFeature === "configuration"
+                ? "bg-primary text-primary-foreground"
+                : "text-sidebar-foreground hover:bg-secondary hover:text-foreground",
+            ].join(" ")}
+            onClick={() => setActiveFeature("configuration")}
+            type="button"
+          >
+            <Settings aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
+            <span className="truncate">Configuration</span>
+          </button>
         </aside>
+
+        <section className="min-w-0 flex-1 px-1 pt-3">
+          <header className="flex items-start justify-between gap-6 border-b border-border pb-4">
+            <div>
+              <h1 className="text-xl leading-none tracking-normal">{activeTitle.title}</h1>
+              <p className="mt-2 text-sm leading-none text-muted-foreground">
+                {activeTitle.description}
+              </p>
+            </div>
+
+            {activeFeature === "financial" && (
+              <div className="flex shrink-0 gap-5">
+                <button
+                  className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-secondary px-4 text-sm text-secondary-foreground shadow-sm transition hover:bg-accent"
+                  onClick={() => setIsFinancialDataOpen(true)}
+                  type="button"
+                >
+                  <Download aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
+                  Gerenciar dados
+                </button>
+                <button
+                  className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-primary px-4 text-sm text-primary-foreground shadow-sm transition hover:bg-primary/90"
+                  onClick={() => setIsFinancialEntryOpen(true)}
+                  type="button"
+                >
+                  <BadgePlus aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
+                  Novo lançamento
+                </button>
+              </div>
+            )}
+          </header>
+
+          <div className="pt-6">
+            {activeFeature === "financial" && (
+              <FinancialFeature
+                isDataDialogOpen={isFinancialDataOpen}
+                isEntryDialogOpen={isFinancialEntryOpen}
+                onCloseDataDialog={() => setIsFinancialDataOpen(false)}
+                onCloseEntryDialog={() => setIsFinancialEntryOpen(false)}
+              />
+            )}
+            {activeFeature === "notes" && <NotesFeature />}
+            {activeFeature === "backup" && <BackupFeature />}
+          </div>
+        </section>
       </div>
 
-      <footer className="border-t border-border bg-card px-6 py-3 text-center text-xs text-muted-foreground">
+      <footer className="flex h-14 items-center justify-center border border-border bg-sidebar px-6 text-center text-xs leading-none text-muted-foreground">
         Created by Fennec Tales
       </footer>
     </main>

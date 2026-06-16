@@ -1,32 +1,39 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: oklch(97.6% 0.012 78);
-  --color-foreground: oklch(28% 0.025 80);
-  --color-card: oklch(99% 0.006 78);
-  --color-card-foreground: oklch(28% 0.025 80);
-  --color-popover: oklch(99% 0.006 78);
-  --color-popover-foreground: oklch(28% 0.025 80);
-  --color-primary: oklch(42% 0.075 78);
-  --color-primary-foreground: oklch(98% 0.006 78);
-  --color-secondary: oklch(91% 0.022 76);
-  --color-secondary-foreground: oklch(35% 0.035 78);
-  --color-muted: oklch(93% 0.016 78);
-  --color-muted-foreground: oklch(53% 0.025 78);
-  --color-accent: oklch(86% 0.045 83);
-  --color-accent-foreground: oklch(31% 0.035 78);
-  --color-destructive: oklch(58% 0.19 28);
-  --color-destructive-foreground: oklch(98% 0.006 78);
-  --color-border: oklch(86% 0.018 78);
-  --color-input: oklch(88% 0.018 78);
-  --color-ring: oklch(52% 0.075 78);
+  --font-mono: "JetBrains Mono", "Courier New", monospace;
+  --color-background: #faf5ed;
+  --color-foreground: #71665d;
+  --color-card: #fffaf5;
+  --color-card-foreground: #71665d;
+  --color-popover: #fffaf5;
+  --color-popover-foreground: #71665d;
+  --color-primary: #4f4749;
+  --color-primary-foreground: #fffaf5;
+  --color-secondary: #eee6dd;
+  --color-secondary-foreground: #71665d;
+  --color-sidebar: #fffafe;
+  --color-sidebar-foreground: #71665d;
+  --color-muted: #eee6dd;
+  --color-muted-foreground: #9b8f86;
+  --color-accent: #e5ddd4;
+  --color-accent-foreground: #4f4749;
+  --color-destructive: #b45245;
+  --color-destructive-foreground: #fffaf5;
+  --color-border: #cfc4bd;
+  --color-input: #cfc4bd;
+  --color-ring: #71665d;
 }
 
 :root {
   color-scheme: light;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: "JetBrains Mono", "Courier New", monospace;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
 }
