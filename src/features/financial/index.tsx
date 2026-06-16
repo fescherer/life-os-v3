@@ -19,6 +19,14 @@ import {
   YAxis,
 } from "recharts";
 import { DatePicker } from "../../components/ui/date-picker";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
 
 type FinancialEntryType = "income" | "expense" | "investment";
 type ChartRange = "years" | "12-months" | "6-months" | "30-days";
@@ -157,17 +165,20 @@ function FinancialFeature({
           <section className="rounded-md border border-border bg-sidebar p-3">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <h2 className="text-base text-foreground">Balanço do patrimônio</h2>
-              <select
-                className="h-8 rounded-md border border-border bg-sidebar px-3 text-xs text-foreground outline-none"
-                onChange={event => setChartRange(event.currentTarget.value as ChartRange)}
-                value={chartRange}
-              >
-                {chartRangeOptions.map(option => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <Select onValueChange={value => setChartRange(value as ChartRange)} value={chartRange}>
+                <SelectTrigger className="h-8 w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {chartRangeOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
             <div className="mt-4 h-52 rounded-md border border-border px-2 py-3">
               <ResponsiveContainer height="100%" width="100%">
@@ -244,11 +255,21 @@ function FinancialFeature({
           <section className="min-h-96 rounded-md border border-border bg-sidebar p-3">
             <div className="flex items-center justify-between gap-4">
               <h2 className="text-base">Lançamentos</h2>
-              <select className="h-8 rounded-md border border-border bg-sidebar px-3 text-xs text-foreground outline-none">
+              <Select defaultValue="30-days">
+                <SelectTrigger className="h-8 w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30-days">Ultimos 30 dias</SelectItem>
+                  <SelectItem value="12-months">Ultimos 12 meses</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {/*
                 <option>Últimos 30 dias</option>
                 <option>Últimos 12 meses</option>
-                <option>Todos</option>
-              </select>
+                  <SelectItem value="all">Todos</SelectItem>
+                  */}
+                </SelectContent>
+              </Select>
             </div>
 
             <label className="mt-4 flex h-8 items-center gap-2 rounded-md border border-border px-2 text-muted-foreground">
@@ -446,17 +467,18 @@ function EntryDialog({
           </label>
           <label className="grid gap-3 text-sm text-muted-foreground">
             Banco
-            <select
-              className="h-9 rounded-md border border-border bg-sidebar px-3 text-xs text-foreground outline-none"
-              onChange={event => setBank(event.currentTarget.value)}
-              value={bank}
-            >
-              {banks.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <Select onValueChange={setBank} value={bank}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione um banco" />
+              </SelectTrigger>
+              <SelectContent>
+                {banks.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
         </div>
 

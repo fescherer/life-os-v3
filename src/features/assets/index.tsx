@@ -21,6 +21,14 @@ import {
   DialogTitle,
 } from "../../components/ui/dialog";
 import { DatePicker } from "../../components/ui/date-picker";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
 
 type AssetRegisterType = "dividend" | "buy" | "sell";
 type DataSection = "assets" | "banks" | "types";
@@ -191,11 +199,16 @@ function AssetsFeature({
             <section className="rounded-md border border-border bg-sidebar p-3 lg:col-span-3">
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <h2 className="text-base text-foreground">Proventos</h2>
-                <select className="h-8 rounded-md border border-border bg-sidebar px-3 text-xs text-foreground outline-none">
-                  <option>12 meses</option>
-                  <option>6 meses</option>
-                  <option>30 dias</option>
-                </select>
+                <Select defaultValue="12-months">
+                  <SelectTrigger className="h-8 w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="12-months">12 meses</SelectItem>
+                    <SelectItem value="6-months">6 meses</SelectItem>
+                    <SelectItem value="30-days">30 dias</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="mt-4 flex h-44 items-end gap-3 rounded-md border border-border px-2 pb-3">
                 {Array.from({ length: 12 }, (_, index) => (
@@ -226,11 +239,21 @@ function AssetsFeature({
           <section className="min-h-96 rounded-md border border-border bg-sidebar p-3">
             <div className="flex items-center justify-between gap-4">
               <h2 className="text-base">LanÃ§amentos</h2>
-              <select className="h-8 rounded-md border border-border bg-sidebar px-3 text-xs text-foreground outline-none">
+              <Select defaultValue="30-days">
+                <SelectTrigger className="h-8 w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30-days">Ultimos 30 dias</SelectItem>
+                  <SelectItem value="12-months">Ultimos 12 meses</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {/*
                 <option>Ãšltimos 30 dias</option>
                 <option>Ãšltimos 12 meses</option>
                 <option>Todos</option>
-              </select>
+                  */}
+                </SelectContent>
+              </Select>
             </div>
 
             <label className="mt-4 flex h-8 items-center gap-2 rounded-md border border-border px-2 text-muted-foreground">
@@ -291,18 +314,21 @@ function AssetsFeature({
         <section className="min-h-[42rem] rounded-md border border-border bg-sidebar p-3 xl:col-span-6">
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-base">Ativos</h2>
-            <select
-              className="h-8 rounded-md border border-border bg-sidebar px-3 text-xs text-foreground outline-none"
-              onChange={event => setAssetTypeFilter(event.currentTarget.value)}
-              value={assetTypeFilter}
-            >
-              <option value="all">Todos os ativos</option>
-              {types.map(type => (
-                <option key={type.value} value={type.value}>
-                  {type.label}
-                </option>
-              ))}
-            </select>
+            <Select onValueChange={setAssetTypeFilter} value={assetTypeFilter}>
+              <SelectTrigger className="h-8 w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os ativos</SelectItem>
+                <SelectGroup>
+                  {types.map(type => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
 
           <label className="mt-4 flex h-8 items-center gap-2 rounded-md border border-border px-2 text-muted-foreground">
@@ -491,33 +517,35 @@ function EntryDialog({
           </label>
           <label className="grid gap-3 text-sm text-muted-foreground">
             Ativo
-            <select
-              className="h-9 rounded-md border border-border bg-sidebar px-3 text-xs text-foreground outline-none"
-              onChange={event => setAsset(event.currentTarget.value)}
-              value={asset}
-            >
-              {assets.map(option => (
-                <option key={option.id} value={option.id}>
-                  {shortTypeLabel(option.type_label)}
-                  {" - "}
-                  {option.ticker}
-                </option>
-              ))}
-            </select>
+            <Select onValueChange={setAsset} value={asset}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione um ativo" />
+              </SelectTrigger>
+              <SelectContent>
+                {assets.map(option => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {shortTypeLabel(option.type_label)}
+                    {" - "}
+                    {option.ticker}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           <label className="grid gap-3 text-sm text-muted-foreground">
             Banco
-            <select
-              className="h-9 rounded-md border border-border bg-sidebar px-3 text-xs text-foreground outline-none"
-              onChange={event => setBank(event.currentTarget.value)}
-              value={bank}
-            >
-              {banks.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <Select onValueChange={setBank} value={bank}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione um banco" />
+              </SelectTrigger>
+              <SelectContent>
+                {banks.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           <label className="grid gap-3 text-sm text-muted-foreground">
             Quantidade
@@ -762,17 +790,18 @@ function AssetManager({
   return (
     <div className="grid max-w-2xl gap-0">
       <div className="grid gap-2 border-b border-border py-3 md:grid-cols-[1fr_1fr_1.5fr_auto]">
-        <select
-          className="h-9 rounded-md border border-border bg-sidebar px-3 text-xs outline-none"
-          onChange={event => setAssetType(event.currentTarget.value)}
-          value={assetType}
-        >
-          {types.map(type => (
-            <option key={type.value} value={type.value}>
-              {type.label}
-            </option>
-          ))}
-        </select>
+        <Select onValueChange={setAssetType} value={assetType}>
+          <SelectTrigger>
+            <SelectValue placeholder="Tipo" />
+          </SelectTrigger>
+          <SelectContent>
+            {types.map(type => (
+              <SelectItem key={type.value} value={type.value}>
+                {type.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <input
           className="h-9 rounded-md border border-border bg-sidebar px-3 text-xs uppercase outline-none"
           onChange={event => setTicker(event.currentTarget.value)}
@@ -801,22 +830,26 @@ function AssetManager({
 
           return (
             <div className="grid gap-2 border-b border-border py-3 md:grid-cols-[1fr_1fr_1.5fr_auto]" key={asset.id}>
-              <select
-                className="h-9 rounded-md border border-border bg-sidebar px-3 text-xs outline-none"
-                onChange={(event) => {
+              <Select
+                onValueChange={(value) => {
                   setEditing(current => ({
                     ...current,
-                    [asset.id]: { ...draft, type: event.currentTarget.value },
+                    [asset.id]: { ...draft, type: value },
                   }));
                 }}
                 value={draft.type}
               >
-                {types.map(type => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {types.map(type => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <input
                 className="h-9 rounded-md border border-border bg-sidebar px-3 text-xs uppercase outline-none"
                 onChange={(event) => {
