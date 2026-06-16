@@ -15,6 +15,18 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -31,6 +43,7 @@ import {
 } from "../../components/ui/select";
 
 type AssetRegisterType = "dividend" | "buy" | "sell";
+type AssetChartRange = "years" | "12-months" | "6-months" | "30-days";
 type DataSection = "assets" | "banks" | "types";
 
 type SelectOption = {
@@ -46,6 +59,7 @@ type Asset = {
   ticker: string;
   type: string;
   full_name: string;
+  color?: string;
   type_label: string;
   type_color: string;
 };
@@ -64,6 +78,7 @@ type AssetRegister = {
   bank_color: string;
   asset_ticker: string;
   asset_full_name: string;
+  asset_color: string;
   asset_type: string;
   asset_type_label: string;
   asset_type_color: string;
@@ -84,6 +99,38 @@ type PortfolioRow = {
   dividends: number;
   dividendYield: number;
 };
+
+type AssetIncomeChartPoint = {
+  income: number;
+  investment: number;
+  label: string;
+  sortKey: string;
+};
+
+type AssetAllocationPoint = {
+  color: string;
+  name: string;
+  percent: number;
+  value: number;
+};
+
+const assetChartRangeOptions: Array<{ label: string; value: AssetChartRange }> = [
+  { label: "Anos", value: "years" },
+  { label: "12 meses", value: "12-months" },
+  { label: "6 meses", value: "6-months" },
+  { label: "30 dias", value: "30-days" },
+];
+
+const allocationColors = [
+  "#4f4749",
+  "#86efac",
+  "#60a5fa",
+  "#fca5a5",
+  "#fbbf24",
+  "#c084fc",
+  "#2dd4bf",
+  "#fb7185",
+];
 
 const registerTypes: Array<{
   icon: typeof ArrowDownToLine;
@@ -108,6 +155,7 @@ function AssetsFeature({
   const [assetSearch, setAssetSearch] = useState("");
   const [registerSearch, setRegisterSearch] = useState("");
   const [assetTypeFilter, setAssetTypeFilter] = useState("all");
+  const [chartRange, setChartRange] = useState<AssetChartRange>("12-months");
   const [status, setStatus] = useState("");
 
   async function loadAssetsData() {
@@ -182,6 +230,16 @@ function AssetsFeature({
     );
   }, [portfolioRows]);
 
+  const incomeChartData = useMemo(
+    () => buildAssetIncomeChartData(registers, chartRange),
+    [chartRange, registers],
+  );
+
+  const allocationChartData = useMemo(
+    () => buildAssetAllocationChartData(portfolioRows),
+    [portfolioRows],
+  );
+
   async function handleChanged() {
     await loadAssetsData();
   }
@@ -199,39 +257,113 @@ function AssetsFeature({
             <section className="rounded-md border border-border bg-sidebar p-3 lg:col-span-3">
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <h2 className="text-base text-foreground">Proventos</h2>
-                <Select defaultValue="12-months">
+                <Select onValueChange={value => setChartRange(value as AssetChartRange)} value={chartRange}>
                   <SelectTrigger className="h-8 w-32">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="12-months">12 meses</SelectItem>
-                    <SelectItem value="6-months">6 meses</SelectItem>
-                    <SelectItem value="30-days">30 dias</SelectItem>
+                    <SelectGroup>
+                      {assetChartRangeOptions.map(option => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
               </div>
-              <div className="mt-4 flex h-44 items-end gap-3 rounded-md border border-border px-2 pb-3">
-                {Array.from({ length: 12 }, (_, index) => (
-                  <div
-                    className="w-full rounded-sm bg-primary"
-                    key={index}
-                    style={{ height: `${34 + ((index * 17) % 86)}px` }}
-                  />
-                ))}
+              <div className="mt-4 h-44 rounded-md border border-border px-2 py-3">
+                <ResponsiveContainer height="100%" width="100%">
+                  <BarChart data={incomeChartData} margin={{ bottom: 0, left: 0, right: 8, top: 8 }}>
+                    <CartesianGrid stroke="#eee6dd" vertical={false} />
+                    <XAxis
+                      axisLine={false}
+                      dataKey="label"
+                      interval={chartRange === "30-days" ? 4 : 0}
+                      tick={{ fill: "#9b8f86", fontSize: 10 }}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tick={{ fill: "#9b8f86", fontSize: 10 }}
+                      tickFormatter={formatCompactCurrency}
+                      tickLine={false}
+                      width={48}
+                    />
+                    <Tooltip
+                      cursor={{ fill: "#eee6dd" }}
+                      formatter={(value, name) => [
+                        formatCurrency(Number(value) * 100),
+                        name === "income" ? "Income" : "Investimentos",
+                      ]}
+                    />
+                    <Bar dataKey="income" fill="#86efac" name="Income" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="investment" fill="#60a5fa" name="Investimentos" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </section>
 
             <section className="rounded-md border border-border bg-sidebar p-3 lg:col-span-2">
               <h2 className="border-b border-border pb-3 text-base text-foreground">Carteira</h2>
-              <div className="flex h-44 items-center justify-center">
-                <div
-                  aria-hidden="true"
-                  className="size-36 rounded-full"
-                  style={{
-                    background:
-                      "conic-gradient(#4f4749 0 78%, #d8d0c3 78% 100%)",
-                  }}
-                />
+              <div className="h-44">
+                {allocationChartData.length > 0 && (
+                  <ResponsiveContainer height="100%" width="100%">
+                    <PieChart>
+                      <Pie
+                        cx="50%"
+                        cy="50%"
+                        data={allocationChartData}
+                        dataKey="value"
+                        innerRadius={38}
+                        nameKey="name"
+                        outerRadius={72}
+                        paddingAngle={2}
+                        stroke="#fffafe"
+                        strokeWidth={2}
+                      >
+                        {allocationChartData.map(point => (
+                          <Cell fill={point.color} key={point.name} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "#fffafe",
+                          border: "1px solid #d8d0c3",
+                          borderRadius: 4,
+                          fontSize: 11,
+                          padding: "6px 8px",
+                        }}
+                        formatter={(value, name, item) => {
+                          const payload = item.payload as AssetAllocationPoint | undefined;
+                          const percent = payload
+                            ? ` (${formatPercent(payload.percent)})`
+                            : "";
+
+                          return [
+                            `${formatCurrency(Number(value) * 100)}${percent}`,
+                            String(name),
+                          ];
+                        }}
+                        itemStyle={{
+                          color: "#4f4749",
+                          fontSize: 11,
+                          padding: 0,
+                        }}
+                        labelStyle={{
+                          color: "#71665d",
+                          fontSize: 11,
+                          marginBottom: 2,
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+                {allocationChartData.length === 0 && (
+                  <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                    Sem ativos investidos.
+                  </div>
+                )}
               </div>
             </section>
           </div>
@@ -295,7 +427,14 @@ function AssetsFeature({
                       <td className="py-2">{formatQuantity(register.quantity)}</td>
                       <td className="py-2">{formatCurrency(register.price)}</td>
                       <td className="py-2">{formatCurrency(totalForRegister(register))}</td>
-                      <td className="py-2">{register.asset_ticker}</td>
+                      <td className="py-2">
+                        <span
+                          className="rounded-full px-2 py-1 text-xs text-primary-foreground"
+                          style={{ backgroundColor: register.asset_color }}
+                        >
+                          {register.asset_ticker}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                   {filteredRegisters.length === 0 && (
@@ -730,6 +869,7 @@ function AssetManager({
 }) {
   const [ticker, setTicker] = useState("");
   const [fullName, setFullName] = useState("");
+  const [color, setColor] = useState("#4f4749");
   const [assetType, setAssetType] = useState(() => types[0]?.value ?? "");
   const [editing, setEditing] = useState<Record<string, Asset>>({});
   const [error, setError] = useState("");
@@ -739,12 +879,14 @@ function AssetManager({
       await invoke("add_asset", {
         asset: {
           asset_type: assetType,
+          color,
           full_name: fullName,
           ticker,
         },
       });
       setTicker("");
       setFullName("");
+      setColor("#4f4749");
       setError("");
       await onChanged();
     }
@@ -758,6 +900,7 @@ function AssetManager({
       await invoke("update_asset", {
         asset: {
           asset_type: asset.type,
+          color: asset.color,
           full_name: asset.full_name,
           id: asset.id,
           ticker: asset.ticker,
@@ -789,7 +932,7 @@ function AssetManager({
 
   return (
     <div className="grid max-w-2xl gap-0">
-      <div className="grid gap-2 border-b border-border py-3 md:grid-cols-[1fr_1fr_1.5fr_auto]">
+      <div className="grid gap-2 border-b border-border py-3 md:grid-cols-[1fr_1fr_1.5fr_2.75rem_auto]">
         <Select onValueChange={setAssetType} value={assetType}>
           <SelectTrigger>
             <SelectValue placeholder="Tipo" />
@@ -814,6 +957,13 @@ function AssetManager({
           placeholder="Nome completo"
           value={fullName}
         />
+        <input
+          aria-label="Cor do ativo"
+          className="h-9 w-11 rounded-md border border-border bg-sidebar p-1"
+          onChange={event => setColor(event.currentTarget.value)}
+          type="color"
+          value={color}
+        />
         <button
           className="flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-4 text-xs text-primary-foreground"
           onClick={addAsset}
@@ -829,7 +979,10 @@ function AssetManager({
           const draft = editing[asset.id] ?? asset;
 
           return (
-            <div className="grid gap-2 border-b border-border py-3 md:grid-cols-[1fr_1fr_1.5fr_auto]" key={asset.id}>
+            <div
+              className="grid gap-2 border-b border-border py-3 md:grid-cols-[1fr_1fr_1.5fr_2.75rem_auto]"
+              key={asset.id}
+            >
               <Select
                 onValueChange={(value) => {
                   setEditing(current => ({
@@ -853,9 +1006,11 @@ function AssetManager({
               <input
                 className="h-9 rounded-md border border-border bg-sidebar px-3 text-xs uppercase outline-none"
                 onChange={(event) => {
+                  const tickerValue = event.currentTarget.value;
+
                   setEditing(current => ({
                     ...current,
-                    [asset.id]: { ...draft, ticker: event.currentTarget.value },
+                    [asset.id]: { ...draft, ticker: tickerValue },
                   }));
                 }}
                 value={draft.ticker}
@@ -863,12 +1018,28 @@ function AssetManager({
               <input
                 className="h-9 rounded-md border border-border bg-sidebar px-3 text-xs outline-none"
                 onChange={(event) => {
+                  const fullNameValue = event.currentTarget.value;
+
                   setEditing(current => ({
                     ...current,
-                    [asset.id]: { ...draft, full_name: event.currentTarget.value },
+                    [asset.id]: { ...draft, full_name: fullNameValue },
                   }));
                 }}
                 value={draft.full_name}
+              />
+              <input
+                aria-label={`Cor de ${draft.ticker}`}
+                className="h-9 w-11 rounded-md border border-border bg-sidebar p-1"
+                onChange={(event) => {
+                  const colorValue = event.currentTarget.value;
+
+                  setEditing(current => ({
+                    ...current,
+                    [asset.id]: { ...draft, color: colorValue },
+                  }));
+                }}
+                type="color"
+                value={normalizeAssetColor(draft.color)}
               />
               <div className="flex gap-2">
                 <button
@@ -975,9 +1146,11 @@ function OptionManager({
               <input
                 className="h-9 rounded-md border border-border bg-sidebar px-3 text-xs outline-none"
                 onChange={(event) => {
+                  const labelValue = event.currentTarget.value;
+
                   setDraftOptions(current => ({
                     ...current,
-                    [option.value]: { ...draft, label: event.currentTarget.value },
+                    [option.value]: { ...draft, label: labelValue },
                   }));
                 }}
                 value={draft.label}
@@ -985,9 +1158,11 @@ function OptionManager({
               <input
                 className="h-9 w-full rounded-md border border-border bg-sidebar p-1"
                 onChange={(event) => {
+                  const colorValue = event.currentTarget.value;
+
                   setDraftOptions(current => ({
                     ...current,
-                    [option.value]: { ...draft, color: event.currentTarget.value },
+                    [option.value]: { ...draft, color: colorValue },
                   }));
                 }}
                 type="color"
@@ -1112,6 +1287,142 @@ function buildPortfolioRows(assets: Asset[], registers: AssetRegister[]): Portfo
     .sort((first, second) => first.asset.ticker.localeCompare(second.asset.ticker));
 }
 
+function buildAssetIncomeChartData(
+  registers: AssetRegister[],
+  range: AssetChartRange,
+): AssetIncomeChartPoint[] {
+  if (range === "years") {
+    return buildYearlyAssetIncomeChartData(registers);
+  }
+
+  if (range === "30-days") {
+    return buildDailyAssetIncomeChartData(registers);
+  }
+
+  return buildMonthlyAssetIncomeChartData(registers, range === "12-months" ? 12 : 6);
+}
+
+function buildYearlyAssetIncomeChartData(registers: AssetRegister[]): AssetIncomeChartPoint[] {
+  const registerYears = registers.map(register => parseEntryDate(register.date).getFullYear());
+  const currentYear = new Date().getFullYear();
+  const firstYear = registerYears.length > 0 ? Math.min(...registerYears) : currentYear;
+  const lastYear = Math.max(currentYear, ...registerYears);
+  const points = new Map<string, AssetIncomeChartPoint>();
+
+  for (let year = firstYear; year <= lastYear; year += 1) {
+    const sortKey = String(year);
+
+    points.set(sortKey, {
+      income: 0,
+      investment: 0,
+      label: sortKey,
+      sortKey,
+    });
+  }
+
+  fillAssetIncomeChartPoints(registers, points, register =>
+    String(parseEntryDate(register.date).getFullYear()),
+  );
+
+  return sortAssetIncomeChartPoints(points);
+}
+
+function buildMonthlyAssetIncomeChartData(
+  registers: AssetRegister[],
+  monthCount: number,
+): AssetIncomeChartPoint[] {
+  const today = new Date();
+  const firstMonth = new Date(today.getFullYear(), today.getMonth() - monthCount + 1, 1);
+  const points = new Map<string, AssetIncomeChartPoint>();
+
+  for (let index = 0; index < monthCount; index += 1) {
+    const date = new Date(firstMonth.getFullYear(), firstMonth.getMonth() + index, 1);
+    const sortKey = formatMonthKey(date);
+
+    points.set(sortKey, {
+      income: 0,
+      investment: 0,
+      label: new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(date),
+      sortKey,
+    });
+  }
+
+  fillAssetIncomeChartPoints(registers, points, register => formatMonthKey(parseEntryDate(register.date)));
+
+  return sortAssetIncomeChartPoints(points);
+}
+
+function buildDailyAssetIncomeChartData(registers: AssetRegister[]): AssetIncomeChartPoint[] {
+  const today = new Date();
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29);
+  const points = new Map<string, AssetIncomeChartPoint>();
+
+  for (let index = 0; index < 30; index += 1) {
+    const date = new Date(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate() + index);
+    const sortKey = formatDayKey(date);
+
+    points.set(sortKey, {
+      income: 0,
+      investment: 0,
+      label: new Intl.DateTimeFormat("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+      }).format(date),
+      sortKey,
+    });
+  }
+
+  fillAssetIncomeChartPoints(registers, points, register => formatDayKey(parseEntryDate(register.date)));
+
+  return sortAssetIncomeChartPoints(points);
+}
+
+function fillAssetIncomeChartPoints(
+  registers: AssetRegister[],
+  points: Map<string, AssetIncomeChartPoint>,
+  getSortKey: (register: AssetRegister) => string,
+) {
+  for (const register of registers) {
+    if (register.type !== "dividend" && register.type !== "buy") {
+      continue;
+    }
+
+    const point = points.get(getSortKey(register));
+
+    if (!point) {
+      continue;
+    }
+
+    if (register.type === "dividend") {
+      point.income += totalForRegister(register) / 100;
+
+      continue;
+    }
+
+    point.investment += totalForRegister(register) / 100;
+  }
+}
+
+function sortAssetIncomeChartPoints(points: Map<string, AssetIncomeChartPoint>) {
+  return Array.from(points.values()).sort((first, second) =>
+    first.sortKey.localeCompare(second.sortKey),
+  );
+}
+
+function buildAssetAllocationChartData(portfolioRows: PortfolioRow[]): AssetAllocationPoint[] {
+  const totalInvested = portfolioRows.reduce((sum, row) => sum + Math.max(row.total, 0), 0);
+
+  return portfolioRows
+    .filter(row => row.total > 0)
+    .sort((first, second) => second.total - first.total)
+    .map((row, index) => ({
+      color: normalizeAssetColor(row.asset.color, allocationColors[index % allocationColors.length]),
+      name: row.asset.ticker,
+      percent: safePercent(row.total, totalInvested),
+      value: row.total / 100,
+    }));
+}
+
 function totalForRegister(register: Pick<AssetRegister, "price" | "quantity">) {
   return Math.round(register.price * register.quantity);
 }
@@ -1148,6 +1459,35 @@ function formatDisplayDate(value: string) {
     day: "2-digit",
     month: "short",
   }).format(date);
+}
+
+function parseEntryDate(value: string) {
+  return new Date(`${value}T00:00:00`);
+}
+
+function formatMonthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatDayKey(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function formatCompactCurrency(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    compactDisplay: "short",
+    currency: "BRL",
+    notation: "compact",
+    style: "currency",
+  }).format(value);
+}
+
+function normalizeAssetColor(color: string | undefined, fallback = "#4f4749") {
+  return color && /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
 }
 
 function formatPercent(value: number) {

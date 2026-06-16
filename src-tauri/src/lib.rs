@@ -72,6 +72,7 @@ struct AssetInput {
     ticker: String,
     asset_type: String,
     full_name: String,
+    color: String,
 }
 
 #[derive(Deserialize)]
@@ -80,6 +81,7 @@ struct UpdateAssetInput {
     ticker: String,
     asset_type: String,
     full_name: String,
+    color: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -88,6 +90,8 @@ struct AssetData {
     #[serde(rename = "type")]
     asset_type: String,
     full_name: String,
+    #[serde(default = "default_asset_color")]
+    color: String,
 }
 
 #[derive(Serialize)]
@@ -133,9 +137,14 @@ struct AssetRegister {
     bank_color: String,
     asset_ticker: String,
     asset_full_name: String,
+    asset_color: String,
     asset_type: String,
     asset_type_label: String,
     asset_type_color: String,
+}
+
+fn default_asset_color() -> String {
+    "#4f4749".to_string()
 }
 
 fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -681,6 +690,7 @@ fn add_asset(app: AppHandle, asset: AssetInput) -> Result<(), String> {
     let asset_types = load_select_options(&connection, "asset_types")?;
     let ticker = normalize_ticker(&asset.ticker)?;
     let full_name = asset.full_name.trim();
+    let color = normalize_color(&asset.color);
 
     if full_name.is_empty() {
         return Err("Asset full name is required".to_string());
@@ -700,7 +710,8 @@ fn add_asset(app: AppHandle, asset: AssetInput) -> Result<(), String> {
     let data = json!({
         "ticker": ticker,
         "type": asset.asset_type,
-        "full_name": full_name
+        "full_name": full_name,
+        "color": color
     })
     .to_string();
 
@@ -720,6 +731,7 @@ fn update_asset(app: AppHandle, asset: UpdateAssetInput) -> Result<(), String> {
     let asset_types = load_select_options(&connection, "asset_types")?;
     let ticker = normalize_ticker(&asset.ticker)?;
     let full_name = asset.full_name.trim();
+    let color = normalize_color(&asset.color);
 
     if full_name.is_empty() {
         return Err("Asset full name is required".to_string());
@@ -739,7 +751,8 @@ fn update_asset(app: AppHandle, asset: UpdateAssetInput) -> Result<(), String> {
     let data = json!({
         "ticker": ticker,
         "type": asset.asset_type,
-        "full_name": full_name
+        "full_name": full_name,
+        "color": color
     })
     .to_string();
 
@@ -831,6 +844,9 @@ fn list_asset_registers(app: AppHandle) -> Result<Vec<AssetRegister>, String> {
                 asset_full_name: asset
                     .map(|asset| asset.data.full_name.clone())
                     .unwrap_or_default(),
+                asset_color: asset
+                    .map(|asset| asset.data.color.clone())
+                    .unwrap_or_else(default_asset_color),
                 asset_type: asset
                     .map(|asset| asset.data.asset_type.clone())
                     .unwrap_or_default(),
