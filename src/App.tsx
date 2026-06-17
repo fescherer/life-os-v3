@@ -18,6 +18,7 @@ import { useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import AssetsFeature from "./features/assets";
 import BackupFeature from "./features/backup";
+import CoinCollectionFeature from "./features/coin-collection";
 import FinancialFeature from "./features/financial";
 import NotesFeature from "./features/notes";
 
@@ -70,8 +71,8 @@ const featureTitles: Record<FeatureId, { title: string; description: string }> =
     description: "Adjust your workspace settings",
   },
   "coin-collection": {
-    title: "Coin Collection page",
-    description: "Organize your coin collection",
+    title: "Coin Collection",
+    description: "Manage your coin collection",
   },
   "financial": {
     title: "Financial page",
@@ -115,6 +116,8 @@ function App() {
   const [activeFeature, setActiveFeature] = useState<FeatureId>("financial");
   const [isAssetsDataOpen, setIsAssetsDataOpen] = useState(false);
   const [isAssetsEntryOpen, setIsAssetsEntryOpen] = useState(false);
+  const [isCoinDataOpen, setIsCoinDataOpen] = useState(false);
+  const [isCoinEntryOpen, setIsCoinEntryOpen] = useState(false);
   const [isFinancialDataOpen, setIsFinancialDataOpen] = useState(false);
   const [isFinancialEntryOpen, setIsFinancialEntryOpen] = useState(false);
   const activeTitle = featureTitles[activeFeature];
@@ -176,11 +179,16 @@ function App() {
               </p>
             </div>
 
-            {(activeFeature === "financial" || activeFeature === "assets") && (
+            {(activeFeature === "financial" || activeFeature === "assets" || activeFeature === "coin-collection") && (
               <div className="flex shrink-0 gap-5">
                 <button
                   className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-secondary px-4 text-sm text-secondary-foreground shadow-sm transition hover:bg-accent"
                   onClick={() => {
+                    if (activeFeature === "coin-collection") {
+                      setIsCoinDataOpen(true);
+                      return;
+                    }
+
                     if (activeFeature === "assets") {
                       setIsAssetsDataOpen(true);
                       return;
@@ -196,6 +204,11 @@ function App() {
                 <button
                   className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-primary px-4 text-sm text-primary-foreground shadow-sm transition hover:bg-primary/90"
                   onClick={() => {
+                    if (activeFeature === "coin-collection") {
+                      setIsCoinEntryOpen(true);
+                      return;
+                    }
+
                     if (activeFeature === "assets") {
                       setIsAssetsEntryOpen(true);
                       return;
@@ -206,7 +219,7 @@ function App() {
                   type="button"
                 >
                   <BadgePlus aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
-                  Novo lançamento
+                  {activeFeature === "coin-collection" ? "New Item" : "Novo lançamento"}
                 </button>
               </div>
             )}
@@ -227,6 +240,14 @@ function App() {
                 isEntryDialogOpen={isFinancialEntryOpen}
                 onCloseDataDialog={() => setIsFinancialDataOpen(false)}
                 onCloseEntryDialog={() => setIsFinancialEntryOpen(false)}
+              />
+            )}
+            {activeFeature === "coin-collection" && (
+              <CoinCollectionFeature
+                isDataDialogOpen={isCoinDataOpen}
+                isEntryDialogOpen={isCoinEntryOpen}
+                onCloseDataDialog={() => setIsCoinDataOpen(false)}
+                onCloseEntryDialog={() => setIsCoinEntryOpen(false)}
               />
             )}
             {activeFeature === "notes" && <NotesFeature />}

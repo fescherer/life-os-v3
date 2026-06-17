@@ -143,6 +143,48 @@ struct AssetRegister {
     asset_type_color: String,
 }
 
+#[derive(Deserialize)]
+struct CoinInput {
+    value: String,
+    period: String,
+    family: String,
+    numista_id: String,
+    description: String,
+    image_source_path: Option<String>,
+    in_collection: bool,
+}
+
+#[derive(Deserialize)]
+struct UpdateCoinCollectionInput {
+    id: String,
+    in_collection: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+struct CoinData {
+    value: String,
+    period: String,
+    family: String,
+    numista_id: String,
+    description: String,
+    #[serde(default)]
+    image_path: String,
+    #[serde(default)]
+    in_collection: bool,
+}
+
+#[derive(Serialize)]
+struct Coin {
+    id: String,
+    created_at: String,
+    updated_at: String,
+    #[serde(flatten)]
+    data: CoinData,
+    family_label: String,
+    family_color: String,
+    image_src: String,
+}
+
 fn default_asset_color() -> String {
     "#4f4749".to_string()
 }
@@ -272,6 +314,20 @@ fn migrate_financial_database(connection: &Connection) -> Result<(), String> {
         .execute(
             "INSERT OR IGNORE INTO selects (id, options) VALUES ('asset_types', ?1)",
             params![default_asset_types],
+        )
+        .map_err(|error| error.to_string())?;
+
+    let default_coin_families = json!([
+        { "value": "reis-1799-1942", "label": "Réis(1799-1942)", "color": "#d6cbbc" },
+        { "value": "cruzeiro-1942-1967", "label": "Cruzeiro(1942-1967)", "color": "#b7c7bd" },
+        { "value": "real-1994-now", "label": "Real(1994-)", "color": "#c8bdd0" }
+    ])
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT OR IGNORE INTO selects (id, options) VALUES ('coin_families', ?1)",
+            params![default_coin_families],
         )
         .map_err(|error| error.to_string())?;
 
@@ -471,6 +527,97 @@ fn add_financial_entry(app: AppHandle, entry: FinancialEntryInput) -> Result<(),
         .map_err(|error| error.to_string())?;
 
     Ok(())
+}
+
+fn copy_coin_image(app: &AppHandle, coin_id: &str, source_path: &str) -> Result<String, String> {
+    let source = PathBuf::from(source_path);
+
+    if !source.is_file() {
+        return Err("Selected image does not exist".to_string());
+    }
+
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_lowercase())
+        .unwrap_or_else(|| "png".to_string());
+    let allowed_extensions = ["png", "jpg", "jpeg", "webp", "gif"];
+
+    if !allowed_extensions.contains(&extension.as_str()) {
+        return Err("Image must be PNG, JPG, WEBP, or GIF".to_string());
+    }
+
+    let relative_path = format!("coin-collection/{coin_id}.{extension}");
+    let destination = images_dir(app)?.join(&relative_path);
+    fs::create_dir_all(
+        destination
+            .parent()
+            .ok_or_else(|| "Invalid image destination".to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    fs::copy(source, destination).map_err(|error| error.to_string())?;
+
+    Ok(relative_path)
+}
+
+fn coin_image_data_url(image_path: &Path) -> Result<String, String> {
+    if !image_path.is_file() {
+        return Ok(String::new());
+    }
+
+    let extension = image_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_lowercase())
+        .unwrap_or_default();
+    let mime_type = match extension.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        _ => "image/png",
+    };
+    let bytes = fs::read(image_path).map_err(|error| error.to_string())?;
+
+    Ok(format!(
+        "data:{mime_type};base64,{}",
+        encode_base64(&bytes)
+    ))
+}
+
+fn encode_base64(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut encoded = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    let mut index = 0;
+
+    while index < bytes.len() {
+        let first = bytes[index];
+        let second = bytes.get(index + 1).copied();
+        let third = bytes.get(index + 2).copied();
+
+        encoded.push(TABLE[(first >> 2) as usize] as char);
+        encoded
+            .push(TABLE[(((first & 0b0000_0011) << 4) | (second.unwrap_or(0) >> 4)) as usize] as char);
+
+        if let Some(second) = second {
+            encoded.push(
+                TABLE[(((second & 0b0000_1111) << 2) | (third.unwrap_or(0) >> 6)) as usize]
+                    as char,
+            );
+        } else {
+            encoded.push('=');
+        }
+
+        if let Some(third) = third {
+            encoded.push(TABLE[(third & 0b0011_1111) as usize] as char);
+        } else {
+            encoded.push('=');
+        }
+
+        index += 3;
+    }
+
+    encoded
 }
 
 #[tauri::command]
@@ -910,6 +1057,172 @@ fn add_asset_register(app: AppHandle, register: AssetRegisterInput) -> Result<()
     Ok(())
 }
 
+#[tauri::command]
+fn list_coin_family_options(app: AppHandle) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+
+    load_select_options(&connection, "coin_families")
+}
+
+#[tauri::command]
+fn add_coin_family_option(
+    app: AppHandle,
+    family: BankOptionInput,
+) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, "coin_families")?;
+    let label = family.label.trim();
+
+    if label.is_empty() {
+        return Err("Family label is required".to_string());
+    }
+
+    options.push(SelectOption {
+        value: format!("coin-family-{}", current_timestamp_id()?),
+        label: label.to_string(),
+        color: normalize_color(&family.color),
+    });
+
+    save_select_options(&connection, "coin_families", &options)?;
+
+    Ok(options)
+}
+
+#[tauri::command]
+fn update_coin_family_option(
+    app: AppHandle,
+    family: UpdateBankOptionInput,
+) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, "coin_families")?;
+    let label = family.label.trim();
+
+    if label.is_empty() {
+        return Err("Family label is required".to_string());
+    }
+
+    let option = options
+        .iter_mut()
+        .find(|option| option.value == family.value)
+        .ok_or_else(|| "Family does not exist".to_string())?;
+
+    option.label = label.to_string();
+    option.color = normalize_color(&family.color);
+    save_select_options(&connection, "coin_families", &options)?;
+
+    Ok(options)
+}
+
+#[tauri::command]
+fn remove_coin_family_option(app: AppHandle, value: String) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, "coin_families")?;
+
+    if is_feature_data_value_used(&connection, "coin", "family", &value)? {
+        return Err("This family is used by coins".to_string());
+    }
+
+    options.retain(|option| option.value != value);
+    save_select_options(&connection, "coin_families", &options)?;
+
+    Ok(options)
+}
+
+#[tauri::command]
+fn select_coin_image() -> Result<String, String> {
+    let selected_file = rfd::FileDialog::new()
+        .set_title("Choose a coin image")
+        .add_filter("Image", &["png", "jpg", "jpeg", "webp", "gif"])
+        .pick_file()
+        .ok_or_else(|| "Image selection canceled".to_string())?;
+
+    Ok(selected_file.display().to_string())
+}
+
+#[tauri::command]
+fn list_coins(app: AppHandle) -> Result<Vec<Coin>, String> {
+    let connection = connect(&app)?;
+
+    load_coins(&app, &connection)
+}
+
+#[tauri::command]
+fn add_coin(app: AppHandle, coin: CoinInput) -> Result<(), String> {
+    let connection = connect(&app)?;
+    let families = load_select_options(&connection, "coin_families")?;
+    let value = coin.value.trim();
+    let period = coin.period.trim();
+    let numista_id = coin.numista_id.trim();
+    let description = coin.description.trim();
+
+    if value.is_empty() {
+        return Err("Coin value is required".to_string());
+    }
+
+    if period.is_empty() {
+        return Err("Coin period is required".to_string());
+    }
+
+    if !families.iter().any(|option| option.value == coin.family) {
+        return Err("Selected coin family does not exist".to_string());
+    }
+
+    let id = format!("coin-{}", current_timestamp_id()?);
+    let image_path = match coin.image_source_path {
+        Some(path) if !path.trim().is_empty() => copy_coin_image(&app, &id, path.trim())?,
+        _ => String::new(),
+    };
+    let data = json!({
+        "value": value,
+        "period": period,
+        "family": coin.family,
+        "numista_id": numista_id,
+        "description": description,
+        "image_path": image_path,
+        "in_collection": coin.in_collection
+    })
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT INTO features (id, feature, data) VALUES (?1, 'coin', ?2)",
+            params![id, data],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn update_coin_collection(
+    app: AppHandle,
+    update: UpdateCoinCollectionInput,
+) -> Result<(), String> {
+    let connection = connect(&app)?;
+    let data_json = connection
+        .query_row(
+            "SELECT data FROM features WHERE feature = 'coin' AND id = ?1",
+            params![update.id],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|_| "Coin does not exist".to_string())?;
+    let mut data = serde_json::from_str::<CoinData>(&data_json).map_err(|error| error.to_string())?;
+
+    data.in_collection = update.in_collection;
+
+    let updated_data = serde_json::to_string(&data).map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "UPDATE features
+            SET data = ?1, updated_at = CURRENT_TIMESTAMP
+            WHERE feature = 'coin' AND id = ?2",
+            params![updated_data, update.id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
 fn validate_entry_type(entry_type: &str) -> Result<(), String> {
     match entry_type {
         "income" | "expense" | "investment" => Ok(()),
@@ -1043,6 +1356,61 @@ fn load_assets(connection: &Connection) -> Result<Vec<Asset>, String> {
     Ok(assets)
 }
 
+fn load_coins(app: &AppHandle, connection: &Connection) -> Result<Vec<Coin>, String> {
+    let families = load_select_options(connection, "coin_families")?;
+    let image_root = images_dir(app)?;
+    let mut statement = connection
+        .prepare(
+            "SELECT id, data, created_at, updated_at
+            FROM features
+            WHERE feature = 'coin'
+            ORDER BY json_extract(data, '$.period') ASC, json_extract(data, '$.value') ASC",
+        )
+        .map_err(|error| error.to_string())?;
+
+    let coins = statement
+        .query_map([], |row| {
+            let data_json: String = row.get(1)?;
+            let data = serde_json::from_str::<CoinData>(&data_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    1,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+            let family = families
+                .iter()
+                .find(|option| option.value == data.family)
+                .cloned();
+            let image_src = if data.image_path.is_empty() {
+                String::new()
+            } else {
+                coin_image_data_url(&image_root.join(&data.image_path)).unwrap_or_default()
+            };
+
+            Ok(Coin {
+                id: row.get(0)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+                family_label: family
+                    .as_ref()
+                    .map(|option| option.label.clone())
+                    .unwrap_or_else(|| data.family.clone()),
+                family_color: family
+                    .as_ref()
+                    .map(|option| option.color.clone())
+                    .unwrap_or_else(|| "#4f4749".to_string()),
+                image_src,
+                data,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    Ok(coins)
+}
+
 fn asset_ticker_exists(
     connection: &Connection,
     ticker: &str,
@@ -1168,6 +1536,14 @@ pub fn run() {
             add_asset_type_option,
             update_asset_type_option,
             remove_asset_type_option,
+            list_coin_family_options,
+            add_coin_family_option,
+            update_coin_family_option,
+            remove_coin_family_option,
+            select_coin_image,
+            list_coins,
+            add_coin,
+            update_coin_collection,
             list_assets,
             add_asset,
             update_asset,
