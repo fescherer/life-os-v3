@@ -311,7 +311,7 @@ function AssetsFeature({
           </section>
         </div>
 
-        <section className="min-h-[42rem] rounded-md border border-border bg-sidebar p-3 xl:col-span-6">
+        <section className="min-h-168 rounded-md border border-border bg-sidebar p-3 xl:col-span-6">
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-base">Ativos</h2>
             <Select onValueChange={setAssetTypeFilter} value={assetTypeFilter}>
@@ -616,7 +616,7 @@ function DataDialog({
 
   return (
     <Modal onClose={onClose} title={title}>
-      <div className="min-h-[28rem]">
+      <div className="min-h-112">
         {!activeSection && (
           <div className="grid gap-8">
             <div className="grid gap-6 md:grid-cols-3">
