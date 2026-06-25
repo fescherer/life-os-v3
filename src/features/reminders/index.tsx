@@ -79,7 +79,6 @@ function RemindersFeature({
     () => reminders.map(withSchedule).sort(sortScheduledReminders),
     [reminders],
   );
-  const dueCount = scheduledReminders.filter(reminder => reminder.due).length;
   const filteredReminders = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
@@ -129,12 +128,6 @@ function RemindersFeature({
     <>
       <section className="rounded-md border border-border bg-sidebar p-3">
         <div className="grid gap-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            <SummaryCard label="Total" value={String(reminders.length)} />
-            <SummaryCard label="Due now" value={String(dueCount)} />
-            <SummaryCard label="Scheduled" value={String(Math.max(reminders.length - dueCount, 0))} />
-          </div>
-
           <label className="flex h-8 items-center gap-2 rounded-md border border-border bg-card px-2 text-muted-foreground">
             <Search aria-hidden="true" className="size-4 shrink-0" />
             <input
@@ -434,15 +427,6 @@ function ReminderFormDialog({
         </div>
       </div>
     </Modal>
-  );
-}
-
-function SummaryCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-border bg-card px-4 py-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-2 text-xl text-foreground">{value}</p>
-    </div>
   );
 }
 
