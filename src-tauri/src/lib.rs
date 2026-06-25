@@ -232,6 +232,36 @@ struct Reminder {
     data: ReminderData,
 }
 
+#[derive(Deserialize)]
+struct WarehouseItemInput {
+    description: String,
+    box_id: String,
+}
+
+#[derive(Deserialize)]
+struct UpdateWarehouseItemInput {
+    id: String,
+    description: String,
+    box_id: String,
+}
+
+#[derive(Deserialize, Serialize)]
+struct WarehouseItemData {
+    description: String,
+    box_id: String,
+}
+
+#[derive(Serialize)]
+struct WarehouseItem {
+    id: String,
+    created_at: String,
+    updated_at: String,
+    #[serde(flatten)]
+    data: WarehouseItemData,
+    box_label: String,
+    box_color: String,
+}
+
 fn default_asset_color() -> String {
     "#4f4749".to_string()
 }
@@ -375,6 +405,18 @@ fn migrate_financial_database(connection: &Connection) -> Result<(), String> {
         .execute(
             "INSERT OR IGNORE INTO selects (id, options) VALUES ('coin_families', ?1)",
             params![default_coin_families],
+        )
+        .map_err(|error| error.to_string())?;
+
+    let default_warehouse_boxes = json!([
+        { "value": "warehouse-box-main", "label": "Main Box", "color": "#4f4749" }
+    ])
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT OR IGNORE INTO selects (id, options) VALUES ('warehouse_boxes', ?1)",
+            params![default_warehouse_boxes],
         )
         .map_err(|error| error.to_string())?;
 
@@ -1448,6 +1490,163 @@ fn remove_reminder(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn list_warehouse_box_options(app: AppHandle) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+
+    load_select_options(&connection, "warehouse_boxes")
+}
+
+#[tauri::command]
+fn add_warehouse_box_option(
+    app: AppHandle,
+    box_option: BankOptionInput,
+) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, "warehouse_boxes")?;
+    let label = box_option.label.trim();
+
+    if label.is_empty() {
+        return Err("Box label is required".to_string());
+    }
+
+    options.push(SelectOption {
+        value: format!("warehouse-box-{}", current_timestamp_id()?),
+        label: label.to_string(),
+        color: normalize_color(&box_option.color),
+    });
+
+    save_select_options(&connection, "warehouse_boxes", &options)?;
+
+    Ok(options)
+}
+
+#[tauri::command]
+fn update_warehouse_box_option(
+    app: AppHandle,
+    box_option: UpdateBankOptionInput,
+) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, "warehouse_boxes")?;
+    let label = box_option.label.trim();
+
+    if label.is_empty() {
+        return Err("Box label is required".to_string());
+    }
+
+    let option = options
+        .iter_mut()
+        .find(|option| option.value == box_option.value)
+        .ok_or_else(|| "Box does not exist".to_string())?;
+
+    option.label = label.to_string();
+    option.color = normalize_color(&box_option.color);
+    save_select_options(&connection, "warehouse_boxes", &options)?;
+
+    Ok(options)
+}
+
+#[tauri::command]
+fn remove_warehouse_box_option(app: AppHandle, value: String) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, "warehouse_boxes")?;
+
+    if is_feature_data_value_used(&connection, "warehouse_item", "box_id", &value)? {
+        return Err("This box is used by warehouse items".to_string());
+    }
+
+    options.retain(|option| option.value != value);
+    save_select_options(&connection, "warehouse_boxes", &options)?;
+
+    Ok(options)
+}
+
+#[tauri::command]
+fn list_warehouse_items(app: AppHandle) -> Result<Vec<WarehouseItem>, String> {
+    let connection = connect(&app)?;
+
+    load_warehouse_items(&connection)
+}
+
+#[tauri::command]
+fn add_warehouse_item(app: AppHandle, item: WarehouseItemInput) -> Result<(), String> {
+    let connection = connect(&app)?;
+    let boxes = load_select_options(&connection, "warehouse_boxes")?;
+    let description = item.description.trim();
+
+    if description.is_empty() {
+        return Err("Item description is required".to_string());
+    }
+
+    if !boxes.iter().any(|option| option.value == item.box_id) {
+        return Err("Selected box does not exist".to_string());
+    }
+
+    let data = json!({
+        "description": description,
+        "box_id": item.box_id
+    })
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT INTO features (id, feature, data) VALUES (?1, 'warehouse_item', ?2)",
+            params![format!("warehouse-item-{}", current_timestamp_id()?), data],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn update_warehouse_item(app: AppHandle, item: UpdateWarehouseItemInput) -> Result<(), String> {
+    let connection = connect(&app)?;
+    let boxes = load_select_options(&connection, "warehouse_boxes")?;
+    let description = item.description.trim();
+
+    if description.is_empty() {
+        return Err("Item description is required".to_string());
+    }
+
+    if !boxes.iter().any(|option| option.value == item.box_id) {
+        return Err("Selected box does not exist".to_string());
+    }
+
+    let data = json!({
+        "description": description,
+        "box_id": item.box_id
+    })
+    .to_string();
+    let updated = connection
+        .execute(
+            "UPDATE features
+            SET data = ?1, updated_at = CURRENT_TIMESTAMP
+            WHERE feature = 'warehouse_item' AND id = ?2",
+            params![data, item.id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if updated == 0 {
+        return Err("Warehouse item does not exist".to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_warehouse_item(app: AppHandle, id: String) -> Result<(), String> {
+    let connection = connect(&app)?;
+
+    connection
+        .execute(
+            "DELETE FROM features WHERE feature = 'warehouse_item' AND id = ?1",
+            params![id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
 fn validate_entry_type(entry_type: &str) -> Result<(), String> {
     match entry_type {
         "income" | "expense" | "investment" => Ok(()),
@@ -1693,6 +1892,54 @@ fn load_reminders(connection: &Connection) -> Result<Vec<Reminder>, String> {
     Ok(reminders)
 }
 
+fn load_warehouse_items(connection: &Connection) -> Result<Vec<WarehouseItem>, String> {
+    let boxes = load_select_options(connection, "warehouse_boxes")?;
+    let mut statement = connection
+        .prepare(
+            "SELECT id, data, created_at, updated_at
+            FROM features
+            WHERE feature = 'warehouse_item'
+            ORDER BY updated_at DESC",
+        )
+        .map_err(|error| error.to_string())?;
+
+    let items = statement
+        .query_map([], |row| {
+            let data_json: String = row.get(1)?;
+            let data = serde_json::from_str::<WarehouseItemData>(&data_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    1,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+            let box_option = boxes
+                .iter()
+                .find(|option| option.value == data.box_id)
+                .cloned();
+
+            Ok(WarehouseItem {
+                id: row.get(0)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+                box_label: box_option
+                    .as_ref()
+                    .map(|option| option.label.clone())
+                    .unwrap_or_else(|| data.box_id.clone()),
+                box_color: box_option
+                    .as_ref()
+                    .map(|option| option.color.clone())
+                    .unwrap_or_else(|| "#4f4749".to_string()),
+                data,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    Ok(items)
+}
+
 fn asset_ticker_exists(
     connection: &Connection,
     ticker: &str,
@@ -1832,6 +2079,14 @@ pub fn run() {
             update_reminder,
             complete_reminder,
             remove_reminder,
+            list_warehouse_box_options,
+            add_warehouse_box_option,
+            update_warehouse_box_option,
+            remove_warehouse_box_option,
+            list_warehouse_items,
+            add_warehouse_item,
+            update_warehouse_item,
+            remove_warehouse_item,
             list_assets,
             add_asset,
             update_asset,

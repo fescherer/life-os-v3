@@ -22,6 +22,7 @@ import CoinCollectionFeature from "./features/coin-collection";
 import FinancialFeature from "./features/financial";
 import NotesFeature from "./features/notes";
 import RemindersFeature, { ReminderAlerts } from "./features/reminders";
+import WarehouseFeature from "./features/warehouse";
 
 type FeatureId
   = | "home"
@@ -122,6 +123,8 @@ function App() {
   const [isFinancialDataOpen, setIsFinancialDataOpen] = useState(false);
   const [isFinancialEntryOpen, setIsFinancialEntryOpen] = useState(false);
   const [isReminderEntryOpen, setIsReminderEntryOpen] = useState(false);
+  const [isWarehouseDataOpen, setIsWarehouseDataOpen] = useState(false);
+  const [isWarehouseEntryOpen, setIsWarehouseEntryOpen] = useState(false);
   const activeTitle = featureTitles[activeFeature];
 
   return (
@@ -181,7 +184,7 @@ function App() {
               </p>
             </div>
 
-            {(activeFeature === "financial" || activeFeature === "assets" || activeFeature === "coin-collection") && (
+            {(activeFeature === "financial" || activeFeature === "assets" || activeFeature === "coin-collection" || activeFeature === "warehouse") && (
               <div className="flex shrink-0 gap-5">
                 <button
                   className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-secondary px-4 text-sm text-secondary-foreground shadow-sm transition hover:bg-accent"
@@ -193,6 +196,11 @@ function App() {
 
                     if (activeFeature === "assets") {
                       setIsAssetsDataOpen(true);
+                      return;
+                    }
+
+                    if (activeFeature === "warehouse") {
+                      setIsWarehouseDataOpen(true);
                       return;
                     }
 
@@ -216,12 +224,17 @@ function App() {
                       return;
                     }
 
+                    if (activeFeature === "warehouse") {
+                      setIsWarehouseEntryOpen(true);
+                      return;
+                    }
+
                     setIsFinancialEntryOpen(true);
                   }}
                   type="button"
                 >
                   <BadgePlus aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
-                  {activeFeature === "coin-collection" ? "New Item" : "Novo lançamento"}
+                  {activeFeature === "financial" ? "Novo lancamento" : "New Item"}
                 </button>
               </div>
             )}
@@ -269,6 +282,14 @@ function App() {
               <RemindersFeature
                 isEntryDialogOpen={isReminderEntryOpen}
                 onCloseEntryDialog={() => setIsReminderEntryOpen(false)}
+              />
+            )}
+            {activeFeature === "warehouse" && (
+              <WarehouseFeature
+                isDataDialogOpen={isWarehouseDataOpen}
+                isEntryDialogOpen={isWarehouseEntryOpen}
+                onCloseDataDialog={() => setIsWarehouseDataOpen(false)}
+                onCloseEntryDialog={() => setIsWarehouseEntryOpen(false)}
               />
             )}
             {activeFeature === "backup" && <BackupFeature />}
