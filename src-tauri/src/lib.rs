@@ -155,6 +155,18 @@ struct CoinInput {
 }
 
 #[derive(Deserialize)]
+struct UpdateCoinInput {
+    id: String,
+    value: String,
+    period: String,
+    family: String,
+    numista_id: String,
+    description: String,
+    image_source_path: Option<String>,
+    in_collection: bool,
+}
+
+#[derive(Deserialize)]
 struct UpdateCoinCollectionInput {
     id: String,
     in_collection: bool,
@@ -1194,6 +1206,63 @@ fn add_coin(app: AppHandle, coin: CoinInput) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn update_coin(app: AppHandle, coin: UpdateCoinInput) -> Result<(), String> {
+    let connection = connect(&app)?;
+    let families = load_select_options(&connection, "coin_families")?;
+    let value = coin.value.trim();
+    let period = coin.period.trim();
+    let numista_id = coin.numista_id.trim();
+    let description = coin.description.trim();
+
+    if value.is_empty() {
+        return Err("Coin value is required".to_string());
+    }
+
+    if period.is_empty() {
+        return Err("Coin period is required".to_string());
+    }
+
+    if !families.iter().any(|option| option.value == coin.family) {
+        return Err("Selected coin family does not exist".to_string());
+    }
+
+    let data_json = connection
+        .query_row(
+            "SELECT data FROM features WHERE feature = 'coin' AND id = ?1",
+            params![coin.id],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|_| "Coin does not exist".to_string())?;
+    let current_data =
+        serde_json::from_str::<CoinData>(&data_json).map_err(|error| error.to_string())?;
+    let image_path = match coin.image_source_path {
+        Some(path) if !path.trim().is_empty() => copy_coin_image(&app, &coin.id, path.trim())?,
+        _ => current_data.image_path,
+    };
+    let data = json!({
+        "value": value,
+        "period": period,
+        "family": coin.family,
+        "numista_id": numista_id,
+        "description": description,
+        "image_path": image_path,
+        "in_collection": coin.in_collection
+    })
+    .to_string();
+
+    connection
+        .execute(
+            "UPDATE features
+            SET data = ?1, updated_at = CURRENT_TIMESTAMP
+            WHERE feature = 'coin' AND id = ?2",
+            params![data, coin.id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
 fn update_coin_collection(
     app: AppHandle,
     update: UpdateCoinCollectionInput,
@@ -1543,6 +1612,7 @@ pub fn run() {
             select_coin_image,
             list_coins,
             add_coin,
+            update_coin,
             update_coin_collection,
             list_assets,
             add_asset,

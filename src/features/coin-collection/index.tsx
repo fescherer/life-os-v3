@@ -7,6 +7,7 @@ import {
   ExternalLink,
   ImagePlus,
   MinusCircle,
+  Pencil,
   Palette,
   PlusCircle,
   Save,
@@ -71,6 +72,8 @@ function CoinCollectionFeature({
   const [families, setFamilies] = useState<SelectOption[]>([]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
+  const [editingCoin, setEditingCoin] = useState<Coin | null>(null);
+  const [viewingCoin, setViewingCoin] = useState<Coin | null>(null);
 
   async function loadCoinData() {
     const [coinOptions, coinFamilyOptions] = await Promise.all([
@@ -160,9 +163,11 @@ function CoinCollectionFeature({
               <CoinCard
                 coin={coin}
                 key={coin.id}
+                onEdit={() => setEditingCoin(coin)}
                 onToggle={() => {
                   toggleCoinCollection(coin).catch(error => setStatus(String(error)));
                 }}
+                onView={() => setViewingCoin(coin)}
               />
             ))}
           </div>
@@ -186,10 +191,29 @@ function CoinCollectionFeature({
       )}
 
       {isEntryDialogOpen && (
-        <NewCoinDialog
+        <CoinFormDialog
           families={families}
           onClose={onCloseEntryDialog}
-          onCreated={handleCoinCreated}
+          onSaved={handleCoinCreated}
+        />
+      )}
+
+      {editingCoin && (
+        <CoinFormDialog
+          coin={editingCoin}
+          families={families}
+          onClose={() => setEditingCoin(null)}
+          onSaved={async () => {
+            await loadCoinData();
+            setEditingCoin(null);
+          }}
+        />
+      )}
+
+      {viewingCoin && (
+        <CoinImageDialog
+          coin={viewingCoin}
+          onClose={() => setViewingCoin(null)}
         />
       )}
     </>
@@ -205,7 +229,17 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CoinCard({ coin, onToggle }: { coin: Coin; onToggle: () => void }) {
+function CoinCard({
+  coin,
+  onEdit,
+  onToggle,
+  onView,
+}: {
+  coin: Coin;
+  onEdit: () => void;
+  onToggle: () => void;
+  onView: () => void;
+}) {
   const imageSrc = coin.image_src;
 
   async function openNumistaPage() {
@@ -233,20 +267,39 @@ function CoinCard({ coin, onToggle }: { coin: Coin; onToggle: () => void }) {
           </p>
         </div>
 
-        <button
-          aria-label="Abrir Numista"
-          className="flex size-6 shrink-0 items-center justify-center rounded-full text-foreground transition hover:bg-secondary"
-          disabled={!coin.numista_id.trim()}
-          onClick={() => {
-            openNumistaPage().catch(console.error);
-          }}
-          type="button"
-        >
-          <ExternalLink aria-hidden="true" className="size-4" />
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            aria-label="Abrir Numista"
+            className="flex size-6 items-center justify-center rounded-full text-foreground transition hover:bg-secondary disabled:opacity-40"
+            disabled={!coin.numista_id.trim()}
+            onClick={() => {
+              openNumistaPage().catch(console.error);
+            }}
+            type="button"
+          >
+            <ExternalLink aria-hidden="true" className="size-4" />
+          </button>
+          <button
+            aria-label="Editar moeda"
+            className="flex size-6 items-center justify-center rounded-full text-foreground transition hover:bg-secondary"
+            onClick={onEdit}
+            type="button"
+          >
+            <Pencil aria-hidden="true" className="size-4" />
+          </button>
+        </div>
       </div>
 
-      <div className="my-3 flex h-28 items-center justify-center overflow-hidden rounded-sm bg-sidebar">
+      <button
+        aria-label={`Ver imagem de ${coin.value}`}
+        className={[
+          "my-3 flex h-28 items-center justify-center overflow-hidden rounded-sm bg-sidebar transition",
+          imageSrc ? "cursor-zoom-in hover:bg-secondary" : "cursor-default",
+        ].join(" ")}
+        disabled={!imageSrc}
+        onClick={onView}
+        type="button"
+      >
         {imageSrc
           ? (
               <img
@@ -258,7 +311,7 @@ function CoinCard({ coin, onToggle }: { coin: Coin; onToggle: () => void }) {
           : (
               <ImagePlus aria-hidden="true" className="size-10 text-muted-foreground" strokeWidth={1.5} />
             )}
-      </div>
+      </button>
 
       <button
         className={[
@@ -279,22 +332,63 @@ function CoinCard({ coin, onToggle }: { coin: Coin; onToggle: () => void }) {
   );
 }
 
-function NewCoinDialog({
+function CoinImageDialog({ coin, onClose }: { coin: Coin; onClose: () => void }) {
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+    >
+      <DialogContent className="max-h-[95vh] max-w-[calc(100vw-2rem)] overflow-hidden p-4 md:max-w-5xl">
+        <DialogHeader className="mb-3 pb-3 pr-8">
+          <DialogTitle className="grid gap-1">
+            <span className="truncate">{coin.value}</span>
+            <span className="truncate text-xs font-normal text-muted-foreground">
+              {`${coin.period} - ${coin.family_label}`}
+            </span>
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex max-h-[calc(95vh-6rem)] min-h-72 items-center justify-center overflow-auto rounded-sm bg-card p-3">
+          {coin.image_src
+            ? (
+                <img
+                  alt={coin.value}
+                  className="max-h-[calc(95vh-8rem)] max-w-full object-contain"
+                  src={coin.image_src}
+                />
+              )
+            : (
+                <ImagePlus aria-hidden="true" className="size-16 text-muted-foreground" strokeWidth={1.5} />
+              )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CoinFormDialog({
+  coin,
   families,
   onClose,
-  onCreated,
+  onSaved,
 }: {
+  coin?: Coin;
   families: SelectOption[];
   onClose: () => void;
-  onCreated: () => void | Promise<void>;
+  onSaved: () => void | Promise<void>;
 }) {
-  const [value, setValue] = useState("");
-  const [period, setPeriod] = useState("");
-  const [family, setFamily] = useState(() => families[0]?.value ?? "");
-  const [numistaId, setNumistaId] = useState("");
-  const [description, setDescription] = useState("");
+  const isEditing = Boolean(coin);
+  const [value, setValue] = useState(coin?.value ?? "");
+  const [period, setPeriod] = useState(coin?.period ?? "");
+  const [family, setFamily] = useState(() => coin?.family ?? families[0]?.value ?? "");
+  const [numistaId, setNumistaId] = useState(coin?.numista_id ?? "");
+  const [description, setDescription] = useState(coin?.description ?? "");
   const [imageSourcePath, setImageSourcePath] = useState("");
-  const [inCollection, setInCollection] = useState(false);
+  const [inCollection, setInCollection] = useState(coin?.in_collection ?? false);
   const [error, setError] = useState("");
   const selectedFamily = family || families[0]?.value || "";
 
@@ -309,42 +403,58 @@ function NewCoinDialog({
     }
   }
 
-  async function addCoin() {
+  async function saveCoin() {
     try {
-      await invoke("add_coin", {
-        coin: {
-          description,
-          family: selectedFamily,
-          image_source_path: imageSourcePath || null,
-          in_collection: inCollection,
-          numista_id: numistaId,
-          period,
-          value,
-        },
-      });
+      if (coin) {
+        await invoke("update_coin", {
+          coin: {
+            id: coin.id,
+            description,
+            family: selectedFamily,
+            image_source_path: imageSourcePath || null,
+            in_collection: inCollection,
+            numista_id: numistaId,
+            period,
+            value,
+          },
+        });
+      }
+      else {
+        await invoke("add_coin", {
+          coin: {
+            description,
+            family: selectedFamily,
+            image_source_path: imageSourcePath || null,
+            in_collection: inCollection,
+            numista_id: numistaId,
+            period,
+            value,
+          },
+        });
+      }
       setError("");
-      await onCreated();
+      await onSaved();
     }
-    catch (addError) {
-      setError(String(addError));
+    catch (saveError) {
+      setError(String(saveError));
     }
   }
 
   return (
-    <Modal onClose={onClose} title="Nova moeda">
+    <Modal onClose={onClose} title={isEditing ? "Editar moeda" : "Nova moeda"}>
       <div className="grid gap-7">
         <div className="grid gap-5">
           <Field label="Value">
             <input
               className="h-8 rounded-md border border-border bg-card px-3 text-xs outline-none"
               onChange={event => setValue(event.currentTarget.value)}
-              placeholder="2000 Réis"
+              placeholder="2000 Reis"
               value={value}
             />
           </Field>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Período">
+            <Field label="Periodo">
               <input
                 className="h-8 rounded-md border border-border bg-card px-3 text-xs outline-none"
                 onChange={event => setPeriod(event.currentTarget.value)}
@@ -362,10 +472,10 @@ function NewCoinDialog({
             </Field>
           </div>
 
-          <Field label="Família">
+          <Field label="Familia">
             <Select onValueChange={setFamily} value={selectedFamily}>
               <SelectTrigger>
-                <SelectValue placeholder="Selecionar família" />
+                <SelectValue placeholder="Selecionar familia" />
               </SelectTrigger>
               <SelectContent>
                 {families.map(option => (
@@ -377,7 +487,7 @@ function NewCoinDialog({
             </Select>
           </Field>
 
-          <Field label="Descrição">
+          <Field label="Descricao">
             <textarea
               className="min-h-16 resize-none rounded-md border border-border bg-card px-3 py-2 text-xs outline-none"
               onChange={event => setDescription(event.currentTarget.value)}
@@ -393,7 +503,7 @@ function NewCoinDialog({
               type="button"
             >
               <span className="truncate">
-                {imageSourcePath ? imageSourcePath : "Selecionar imagem"}
+                {imageSourcePath || (coin?.image_path ? "Manter imagem atual" : "Selecionar imagem")}
               </span>
               <ImagePlus aria-hidden="true" className="size-4 shrink-0" />
             </button>
@@ -406,7 +516,7 @@ function NewCoinDialog({
               onChange={event => setInCollection(event.currentTarget.checked)}
               type="checkbox"
             />
-            Já está na coleção
+            Ja esta na colecao
           </label>
         </div>
 
@@ -422,11 +532,13 @@ function NewCoinDialog({
           </button>
           <button
             className="flex h-9 min-w-52 items-center justify-center gap-3 rounded-md bg-primary px-4 text-sm text-primary-foreground transition hover:bg-primary/90"
-            onClick={addCoin}
+            onClick={saveCoin}
             type="button"
           >
-            <BadgePlus aria-hidden="true" className="size-5" />
-            Adicionar moeda
+            {isEditing
+              ? <Save aria-hidden="true" className="size-5" />
+              : <BadgePlus aria-hidden="true" className="size-5" />}
+            {isEditing ? "Salvar moeda" : "Adicionar moeda"}
           </button>
         </div>
       </div>
