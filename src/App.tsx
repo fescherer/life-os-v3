@@ -21,6 +21,7 @@ import BackupFeature from "./features/backup";
 import CoinCollectionFeature from "./features/coin-collection";
 import FinancialFeature from "./features/financial";
 import NotesFeature from "./features/notes";
+import RemindersFeature, { ReminderAlerts } from "./features/reminders";
 
 type FeatureId
   = | "home"
@@ -120,6 +121,7 @@ function App() {
   const [isCoinEntryOpen, setIsCoinEntryOpen] = useState(false);
   const [isFinancialDataOpen, setIsFinancialDataOpen] = useState(false);
   const [isFinancialEntryOpen, setIsFinancialEntryOpen] = useState(false);
+  const [isReminderEntryOpen, setIsReminderEntryOpen] = useState(false);
   const activeTitle = featureTitles[activeFeature];
 
   return (
@@ -223,9 +225,21 @@ function App() {
                 </button>
               </div>
             )}
+
+            {activeFeature === "reminders" && (
+              <button
+                className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-primary px-4 text-sm text-primary-foreground shadow-sm transition hover:bg-primary/90"
+                onClick={() => setIsReminderEntryOpen(true)}
+                type="button"
+              >
+                <BadgePlus aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
+                New reminder
+              </button>
+            )}
           </header>
 
           <div className="pt-6">
+            {activeFeature === "home" && <ReminderAlerts />}
             {activeFeature === "assets" && (
               <AssetsFeature
                 isDataDialogOpen={isAssetsDataOpen}
@@ -251,6 +265,12 @@ function App() {
               />
             )}
             {activeFeature === "notes" && <NotesFeature />}
+            {activeFeature === "reminders" && (
+              <RemindersFeature
+                isEntryDialogOpen={isReminderEntryOpen}
+                onCloseEntryDialog={() => setIsReminderEntryOpen(false)}
+              />
+            )}
             {activeFeature === "backup" && <BackupFeature />}
           </div>
         </section>

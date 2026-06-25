@@ -197,6 +197,41 @@ struct Coin {
     image_src: String,
 }
 
+#[derive(Deserialize)]
+struct ReminderInput {
+    title: String,
+    frequency: String,
+    start_date: String,
+}
+
+#[derive(Deserialize)]
+struct UpdateReminderInput {
+    id: String,
+    title: String,
+    frequency: String,
+    start_date: String,
+    last_done_date: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct ReminderData {
+    title: String,
+    frequency: String,
+    #[serde(default)]
+    start_date: String,
+    #[serde(default)]
+    last_done_date: Option<String>,
+}
+
+#[derive(Serialize)]
+struct Reminder {
+    id: String,
+    created_at: String,
+    updated_at: String,
+    #[serde(flatten)]
+    data: ReminderData,
+}
+
 fn default_asset_color() -> String {
     "#4f4749".to_string()
 }
@@ -401,6 +436,14 @@ fn current_timestamp_id() -> Result<String, String> {
         .duration_since(UNIX_EPOCH)
         .map_err(|error| error.to_string())?
         .as_nanos()
+        .to_string())
+}
+
+fn current_timestamp_seconds() -> Result<String, String> {
+    Ok(SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_secs()
         .to_string())
 }
 
@@ -1292,10 +1335,145 @@ fn update_coin_collection(
     Ok(())
 }
 
+#[tauri::command]
+fn list_reminders(app: AppHandle) -> Result<Vec<Reminder>, String> {
+    let connection = connect(&app)?;
+
+    load_reminders(&connection)
+}
+
+#[tauri::command]
+fn add_reminder(app: AppHandle, reminder: ReminderInput) -> Result<(), String> {
+    let connection = connect(&app)?;
+    let title = reminder.title.trim();
+    let start_date = reminder.start_date.trim();
+    validate_reminder_frequency(&reminder.frequency)?;
+    validate_date_value(start_date)?;
+
+    if title.is_empty() {
+        return Err("Reminder title is required".to_string());
+    }
+
+    let data = json!({
+        "title": title,
+        "frequency": reminder.frequency,
+        "start_date": start_date,
+        "last_done_date": null
+    })
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT INTO features (id, feature, data) VALUES (?1, 'reminder', ?2)",
+            params![format!("reminder-{}", current_timestamp_id()?), data],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn update_reminder(app: AppHandle, reminder: UpdateReminderInput) -> Result<(), String> {
+    let connection = connect(&app)?;
+    let title = reminder.title.trim();
+    let start_date = reminder.start_date.trim();
+    validate_reminder_frequency(&reminder.frequency)?;
+    validate_date_value(start_date)?;
+
+    if title.is_empty() {
+        return Err("Reminder title is required".to_string());
+    }
+
+    let data = json!({
+        "title": title,
+        "frequency": reminder.frequency,
+        "start_date": start_date,
+        "last_done_date": reminder.last_done_date
+    })
+    .to_string();
+    let updated = connection
+        .execute(
+            "UPDATE features
+            SET data = ?1, updated_at = CURRENT_TIMESTAMP
+            WHERE feature = 'reminder' AND id = ?2",
+            params![data, reminder.id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if updated == 0 {
+        return Err("Reminder does not exist".to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn complete_reminder(app: AppHandle, id: String) -> Result<(), String> {
+    let connection = connect(&app)?;
+    let data_json = connection
+        .query_row(
+            "SELECT data FROM features WHERE feature = 'reminder' AND id = ?1",
+            params![id],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|_| "Reminder does not exist".to_string())?;
+    let mut data =
+        serde_json::from_str::<ReminderData>(&data_json).map_err(|error| error.to_string())?;
+    data.last_done_date = Some(current_timestamp_seconds()?);
+    let updated_data = serde_json::to_string(&data).map_err(|error| error.to_string())?;
+
+    connection
+        .execute(
+            "UPDATE features
+            SET data = ?1, updated_at = CURRENT_TIMESTAMP
+            WHERE feature = 'reminder' AND id = ?2",
+            params![updated_data, id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_reminder(app: AppHandle, id: String) -> Result<(), String> {
+    let connection = connect(&app)?;
+
+    connection
+        .execute(
+            "DELETE FROM features WHERE feature = 'reminder' AND id = ?1",
+            params![id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
 fn validate_entry_type(entry_type: &str) -> Result<(), String> {
     match entry_type {
         "income" | "expense" | "investment" => Ok(()),
         _ => Err("Invalid financial entry type".to_string()),
+    }
+}
+
+fn validate_reminder_frequency(frequency: &str) -> Result<(), String> {
+    match frequency {
+        "daily" | "weekly" | "monthly" | "quarterly" | "yearly" => Ok(()),
+        _ => Err("Invalid reminder frequency".to_string()),
+    }
+}
+
+fn validate_date_value(date: &str) -> Result<(), String> {
+    let parts = date.split('-').collect::<Vec<_>>();
+
+    if parts.len() == 3
+        && parts[0].len() == 4
+        && parts[1].len() == 2
+        && parts[2].len() == 2
+        && parts.iter().all(|part| part.chars().all(|character| character.is_ascii_digit()))
+    {
+        Ok(())
+    } else {
+        Err("Date must use YYYY-MM-DD format".to_string())
     }
 }
 
@@ -1480,6 +1658,41 @@ fn load_coins(app: &AppHandle, connection: &Connection) -> Result<Vec<Coin>, Str
     Ok(coins)
 }
 
+fn load_reminders(connection: &Connection) -> Result<Vec<Reminder>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT id, data, created_at, updated_at
+            FROM features
+            WHERE feature = 'reminder'
+            ORDER BY updated_at DESC",
+        )
+        .map_err(|error| error.to_string())?;
+
+    let reminders = statement
+        .query_map([], |row| {
+            let data_json: String = row.get(1)?;
+            let data = serde_json::from_str::<ReminderData>(&data_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    1,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+
+            Ok(Reminder {
+                id: row.get(0)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+                data,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    Ok(reminders)
+}
+
 fn asset_ticker_exists(
     connection: &Connection,
     ticker: &str,
@@ -1614,6 +1827,11 @@ pub fn run() {
             add_coin,
             update_coin,
             update_coin_collection,
+            list_reminders,
+            add_reminder,
+            update_reminder,
+            complete_reminder,
+            remove_reminder,
             list_assets,
             add_asset,
             update_asset,
