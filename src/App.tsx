@@ -23,6 +23,7 @@ import FinancialFeature from "./features/financial";
 import NotesFeature from "./features/notes";
 import PackagingFeature from "./features/packaging";
 import RemindersFeature, { ReminderAlerts } from "./features/reminders";
+import ReviewsFeature from "./features/reviews";
 import WarehouseFeature from "./features/warehouse";
 
 type FeatureId
@@ -126,6 +127,8 @@ function App() {
   const [isPackagingDataOpen, setIsPackagingDataOpen] = useState(false);
   const [isPackagingEntryOpen, setIsPackagingEntryOpen] = useState(false);
   const [isReminderEntryOpen, setIsReminderEntryOpen] = useState(false);
+  const [isReviewsDataOpen, setIsReviewsDataOpen] = useState(false);
+  const [isReviewsEntryOpen, setIsReviewsEntryOpen] = useState(false);
   const [isWarehouseDataOpen, setIsWarehouseDataOpen] = useState(false);
   const [isWarehouseEntryOpen, setIsWarehouseEntryOpen] = useState(false);
   const activeTitle = featureTitles[activeFeature];
@@ -187,7 +190,7 @@ function App() {
               </p>
             </div>
 
-            {(activeFeature === "financial" || activeFeature === "assets" || activeFeature === "coin-collection" || activeFeature === "warehouse" || activeFeature === "packaging") && (
+            {(activeFeature === "financial" || activeFeature === "assets" || activeFeature === "coin-collection" || activeFeature === "warehouse" || activeFeature === "packaging" || activeFeature === "reviews") && (
               <div className="flex shrink-0 gap-5">
                 <button
                   className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-secondary px-4 text-sm text-secondary-foreground shadow-sm transition hover:bg-accent"
@@ -209,6 +212,11 @@ function App() {
 
                     if (activeFeature === "packaging") {
                       setIsPackagingDataOpen(true);
+                      return;
+                    }
+
+                    if (activeFeature === "reviews") {
+                      setIsReviewsDataOpen(true);
                       return;
                     }
 
@@ -239,6 +247,11 @@ function App() {
 
                     if (activeFeature === "packaging") {
                       setIsPackagingEntryOpen(true);
+                      return;
+                    }
+
+                    if (activeFeature === "reviews") {
+                      setIsReviewsEntryOpen(true);
                       return;
                     }
 
@@ -303,6 +316,14 @@ function App() {
               <RemindersFeature
                 isEntryDialogOpen={isReminderEntryOpen}
                 onCloseEntryDialog={() => setIsReminderEntryOpen(false)}
+              />
+            )}
+            {activeFeature === "reviews" && (
+              <ReviewsFeature
+                isDataDialogOpen={isReviewsDataOpen}
+                isEntryDialogOpen={isReviewsEntryOpen}
+                onCloseDataDialog={() => setIsReviewsDataOpen(false)}
+                onCloseEntryDialog={() => setIsReviewsEntryOpen(false)}
               />
             )}
             {activeFeature === "warehouse" && (

@@ -198,6 +198,53 @@ struct Coin {
 }
 
 #[derive(Deserialize)]
+struct ReviewInput {
+    name: String,
+    media_type: String,
+    status: String,
+    rating: i64,
+    review_text: String,
+    image_source_path: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct UpdateReviewInput {
+    id: String,
+    name: String,
+    media_type: String,
+    status: String,
+    rating: i64,
+    review_text: String,
+    image_source_path: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct ReviewData {
+    name: String,
+    media_type: String,
+    status: String,
+    rating: i64,
+    #[serde(default)]
+    review_text: String,
+    #[serde(default)]
+    image_path: String,
+}
+
+#[derive(Serialize)]
+struct Review {
+    id: String,
+    created_at: String,
+    updated_at: String,
+    #[serde(flatten)]
+    data: ReviewData,
+    media_type_label: String,
+    media_type_color: String,
+    status_label: String,
+    status_color: String,
+    image_src: String,
+}
+
+#[derive(Deserialize)]
 struct ReminderInput {
     title: String,
     frequency: String,
@@ -449,6 +496,38 @@ fn migrate_financial_database(connection: &Connection) -> Result<(), String> {
         )
         .map_err(|error| error.to_string())?;
 
+    let default_review_media_types = json!([
+        { "value": "movie", "label": "Movie", "color": "#4f4749" },
+        { "value": "series", "label": "Series", "color": "#6f7f8f" },
+        { "value": "book", "label": "Book", "color": "#8a6f5a" },
+        { "value": "game", "label": "Game", "color": "#6f8a74" }
+    ])
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT OR IGNORE INTO selects (id, options) VALUES ('review_media_types', ?1)",
+            params![default_review_media_types],
+        )
+        .map_err(|error| error.to_string())?;
+
+    let default_review_statuses = json!([
+        { "value": "completed", "label": "Completed", "color": "#4f4749" },
+        { "value": "watching", "label": "Watching", "color": "#6f7f8f" },
+        { "value": "reading", "label": "Reading", "color": "#8a6f5a" },
+        { "value": "playing", "label": "Playing", "color": "#6f8a74" },
+        { "value": "on-hold", "label": "On hold", "color": "#a08a5a" },
+        { "value": "dropped", "label": "Dropped", "color": "#b45245" }
+    ])
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT OR IGNORE INTO selects (id, options) VALUES ('review_statuses', ?1)",
+            params![default_review_statuses],
+        )
+        .map_err(|error| error.to_string())?;
+
     let default_warehouse_boxes = json!([
         { "value": "warehouse-box-main", "label": "Main Box", "color": "#4f4749" }
     ])
@@ -694,6 +773,19 @@ fn add_financial_entry(app: AppHandle, entry: FinancialEntryInput) -> Result<(),
 }
 
 fn copy_coin_image(app: &AppHandle, coin_id: &str, source_path: &str) -> Result<String, String> {
+    copy_feature_image(app, "coin-collection", coin_id, source_path)
+}
+
+fn copy_review_image(app: &AppHandle, review_id: &str, source_path: &str) -> Result<String, String> {
+    copy_feature_image(app, "reviews", review_id, source_path)
+}
+
+fn copy_feature_image(
+    app: &AppHandle,
+    feature_dir: &str,
+    item_id: &str,
+    source_path: &str,
+) -> Result<String, String> {
     let source = PathBuf::from(source_path);
 
     if !source.is_file() {
@@ -711,7 +803,7 @@ fn copy_coin_image(app: &AppHandle, coin_id: &str, source_path: &str) -> Result<
         return Err("Image must be PNG, JPG, WEBP, or GIF".to_string());
     }
 
-    let relative_path = format!("coin-collection/{coin_id}.{extension}");
+    let relative_path = format!("{feature_dir}/{item_id}.{extension}");
     let destination = images_dir(app)?.join(&relative_path);
     fs::create_dir_all(
         destination
@@ -725,6 +817,14 @@ fn copy_coin_image(app: &AppHandle, coin_id: &str, source_path: &str) -> Result<
 }
 
 fn coin_image_data_url(image_path: &Path) -> Result<String, String> {
+    image_data_url(image_path)
+}
+
+fn review_image_data_url(image_path: &Path) -> Result<String, String> {
+    image_data_url(image_path)
+}
+
+fn image_data_url(image_path: &Path) -> Result<String, String> {
     if !image_path.is_file() {
         return Ok(String::new());
     }
@@ -1445,6 +1545,199 @@ fn update_coin_collection(
 }
 
 #[tauri::command]
+fn list_review_media_type_options(app: AppHandle) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+
+    load_select_options(&connection, "review_media_types")
+}
+
+#[tauri::command]
+fn add_review_media_type_option(
+    app: AppHandle,
+    media_type: BankOptionInput,
+) -> Result<Vec<SelectOption>, String> {
+    add_review_option(
+        app,
+        media_type,
+        "review_media_types",
+        "review-media-type",
+        "Media type",
+    )
+}
+
+#[tauri::command]
+fn update_review_media_type_option(
+    app: AppHandle,
+    media_type: UpdateBankOptionInput,
+) -> Result<Vec<SelectOption>, String> {
+    update_review_option(app, media_type, "review_media_types", "Media type")
+}
+
+#[tauri::command]
+fn remove_review_media_type_option(
+    app: AppHandle,
+    value: String,
+) -> Result<Vec<SelectOption>, String> {
+    remove_review_option(
+        app,
+        value,
+        "review_media_types",
+        "review",
+        "media_type",
+        "This media type is used by reviews",
+    )
+}
+
+#[tauri::command]
+fn list_review_status_options(app: AppHandle) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+
+    load_select_options(&connection, "review_statuses")
+}
+
+#[tauri::command]
+fn add_review_status_option(
+    app: AppHandle,
+    status: BankOptionInput,
+) -> Result<Vec<SelectOption>, String> {
+    add_review_option(app, status, "review_statuses", "review-status", "Status")
+}
+
+#[tauri::command]
+fn update_review_status_option(
+    app: AppHandle,
+    status: UpdateBankOptionInput,
+) -> Result<Vec<SelectOption>, String> {
+    update_review_option(app, status, "review_statuses", "Status")
+}
+
+#[tauri::command]
+fn remove_review_status_option(app: AppHandle, value: String) -> Result<Vec<SelectOption>, String> {
+    remove_review_option(
+        app,
+        value,
+        "review_statuses",
+        "review",
+        "status",
+        "This status is used by reviews",
+    )
+}
+
+#[tauri::command]
+fn select_review_image() -> Result<String, String> {
+    let selected_file = rfd::FileDialog::new()
+        .set_title("Choose a review image")
+        .add_filter("Image", &["png", "jpg", "jpeg", "webp", "gif"])
+        .pick_file()
+        .ok_or_else(|| "Image selection canceled".to_string())?;
+
+    Ok(selected_file.display().to_string())
+}
+
+#[tauri::command]
+fn list_reviews(app: AppHandle) -> Result<Vec<Review>, String> {
+    let connection = connect(&app)?;
+
+    load_reviews(&app, &connection)
+}
+
+#[tauri::command]
+fn add_review(app: AppHandle, review: ReviewInput) -> Result<(), String> {
+    let connection = connect(&app)?;
+    validate_review(
+        &connection,
+        &review.name,
+        &review.media_type,
+        &review.status,
+        review.rating,
+    )?;
+
+    let id = format!("review-{}", current_timestamp_id()?);
+    let image_path = match review.image_source_path {
+        Some(path) if !path.trim().is_empty() => copy_review_image(&app, &id, path.trim())?,
+        _ => String::new(),
+    };
+    let data = json!({
+        "name": review.name.trim(),
+        "media_type": review.media_type,
+        "status": review.status,
+        "rating": review.rating,
+        "review_text": review.review_text.trim(),
+        "image_path": image_path
+    })
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT INTO features (id, feature, data) VALUES (?1, 'review', ?2)",
+            params![id, data],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn update_review(app: AppHandle, review: UpdateReviewInput) -> Result<(), String> {
+    let connection = connect(&app)?;
+    validate_review(
+        &connection,
+        &review.name,
+        &review.media_type,
+        &review.status,
+        review.rating,
+    )?;
+
+    let data_json = connection
+        .query_row(
+            "SELECT data FROM features WHERE feature = 'review' AND id = ?1",
+            params![review.id],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|_| "Review does not exist".to_string())?;
+    let current_data =
+        serde_json::from_str::<ReviewData>(&data_json).map_err(|error| error.to_string())?;
+    let image_path = match review.image_source_path {
+        Some(path) if !path.trim().is_empty() => copy_review_image(&app, &review.id, path.trim())?,
+        _ => current_data.image_path,
+    };
+    let data = json!({
+        "name": review.name.trim(),
+        "media_type": review.media_type,
+        "status": review.status,
+        "rating": review.rating,
+        "review_text": review.review_text.trim(),
+        "image_path": image_path
+    })
+    .to_string();
+
+    connection
+        .execute(
+            "UPDATE features
+            SET data = ?1, updated_at = CURRENT_TIMESTAMP
+            WHERE feature = 'review' AND id = ?2",
+            params![data, review.id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_review(app: AppHandle, id: String) -> Result<(), String> {
+    let connection = connect(&app)?;
+
+    connection
+        .execute(
+            "DELETE FROM features WHERE feature = 'review' AND id = ?1",
+            params![id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
 fn list_reminders(app: AppHandle) -> Result<Vec<Reminder>, String> {
     let connection = connect(&app)?;
 
@@ -1946,6 +2239,108 @@ fn validate_packaging_item(
     Ok(())
 }
 
+fn validate_review(
+    connection: &Connection,
+    name: &str,
+    media_type: &str,
+    status: &str,
+    rating: i64,
+) -> Result<(), String> {
+    let media_types = load_select_options(connection, "review_media_types")?;
+    let statuses = load_select_options(connection, "review_statuses")?;
+
+    if name.trim().is_empty() {
+        return Err("Review name is required".to_string());
+    }
+
+    if !media_types.iter().any(|option| option.value == media_type) {
+        return Err("Selected media type does not exist".to_string());
+    }
+
+    if !statuses.iter().any(|option| option.value == status) {
+        return Err("Selected status does not exist".to_string());
+    }
+
+    if !(0..=10).contains(&rating) {
+        return Err("Rating must be between 0 and 10".to_string());
+    }
+
+    Ok(())
+}
+
+fn add_review_option(
+    app: AppHandle,
+    option: BankOptionInput,
+    select_id: &str,
+    value_prefix: &str,
+    label_name: &str,
+) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, select_id)?;
+    let label = option.label.trim();
+
+    if label.is_empty() {
+        return Err(format!("{label_name} label is required"));
+    }
+
+    options.push(SelectOption {
+        value: format!("{}-{}", value_prefix, current_timestamp_id()?),
+        label: label.to_string(),
+        color: normalize_color(&option.color),
+    });
+
+    save_select_options(&connection, select_id, &options)?;
+
+    Ok(options)
+}
+
+fn update_review_option(
+    app: AppHandle,
+    option: UpdateBankOptionInput,
+    select_id: &str,
+    label_name: &str,
+) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, select_id)?;
+    let label = option.label.trim();
+
+    if label.is_empty() {
+        return Err(format!("{label_name} label is required"));
+    }
+
+    let existing_option = options
+        .iter_mut()
+        .find(|current_option| current_option.value == option.value)
+        .ok_or_else(|| format!("{label_name} does not exist"))?;
+
+    existing_option.label = label.to_string();
+    existing_option.color = normalize_color(&option.color);
+    save_select_options(&connection, select_id, &options)?;
+
+    Ok(options)
+}
+
+fn remove_review_option(
+    app: AppHandle,
+    value: String,
+    select_id: &str,
+    feature: &str,
+    data_key: &str,
+    error_message: &str,
+) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, select_id)?;
+
+    if is_feature_data_value_used(&connection, feature, data_key, &value)? {
+        return Err(error_message.to_string());
+    }
+
+    options.retain(|option| option.value != value);
+    save_select_options(&connection, select_id, &options)?;
+
+    Ok(options)
+}
+
 fn add_packaging_option(
     app: AppHandle,
     company: BankOptionInput,
@@ -2176,6 +2571,74 @@ fn load_coins(app: &AppHandle, connection: &Connection) -> Result<Vec<Coin>, Str
         .map_err(|error| error.to_string())?;
 
     Ok(coins)
+}
+
+fn load_reviews(app: &AppHandle, connection: &Connection) -> Result<Vec<Review>, String> {
+    let media_types = load_select_options(connection, "review_media_types")?;
+    let statuses = load_select_options(connection, "review_statuses")?;
+    let image_root = images_dir(app)?;
+    let mut statement = connection
+        .prepare(
+            "SELECT id, data, created_at, updated_at
+            FROM features
+            WHERE feature = 'review'
+            ORDER BY updated_at DESC",
+        )
+        .map_err(|error| error.to_string())?;
+
+    let reviews = statement
+        .query_map([], |row| {
+            let data_json: String = row.get(1)?;
+            let data = serde_json::from_str::<ReviewData>(&data_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    1,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+            let media_type = media_types
+                .iter()
+                .find(|option| option.value == data.media_type)
+                .cloned();
+            let status = statuses
+                .iter()
+                .find(|option| option.value == data.status)
+                .cloned();
+            let image_src = if data.image_path.is_empty() {
+                String::new()
+            } else {
+                review_image_data_url(&image_root.join(&data.image_path)).unwrap_or_default()
+            };
+
+            Ok(Review {
+                id: row.get(0)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+                media_type_label: media_type
+                    .as_ref()
+                    .map(|option| option.label.clone())
+                    .unwrap_or_else(|| data.media_type.clone()),
+                media_type_color: media_type
+                    .as_ref()
+                    .map(|option| option.color.clone())
+                    .unwrap_or_else(|| "#4f4749".to_string()),
+                status_label: status
+                    .as_ref()
+                    .map(|option| option.label.clone())
+                    .unwrap_or_else(|| data.status.clone()),
+                status_color: status
+                    .as_ref()
+                    .map(|option| option.color.clone())
+                    .unwrap_or_else(|| "#4f4749".to_string()),
+                image_src,
+                data,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    Ok(reviews)
 }
 
 fn load_reminders(connection: &Connection) -> Result<Vec<Reminder>, String> {
@@ -2456,6 +2919,19 @@ pub fn run() {
             add_coin,
             update_coin,
             update_coin_collection,
+            list_review_media_type_options,
+            add_review_media_type_option,
+            update_review_media_type_option,
+            remove_review_media_type_option,
+            list_review_status_options,
+            add_review_status_option,
+            update_review_status_option,
+            remove_review_status_option,
+            select_review_image,
+            list_reviews,
+            add_review,
+            update_review,
+            remove_review,
             list_reminders,
             add_reminder,
             update_reminder,
