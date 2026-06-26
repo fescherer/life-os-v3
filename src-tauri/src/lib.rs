@@ -262,6 +262,47 @@ struct WarehouseItem {
     box_color: String,
 }
 
+#[derive(Deserialize)]
+struct PackagingItemInput {
+    transport_company: String,
+    start_date: String,
+    purchase_company: String,
+    description: String,
+    has_arrived: bool,
+}
+
+#[derive(Deserialize)]
+struct UpdatePackagingItemInput {
+    id: String,
+    transport_company: String,
+    start_date: String,
+    purchase_company: String,
+    description: String,
+    has_arrived: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+struct PackagingItemData {
+    transport_company: String,
+    start_date: String,
+    purchase_company: String,
+    description: String,
+    has_arrived: bool,
+}
+
+#[derive(Serialize)]
+struct PackagingItem {
+    id: String,
+    created_at: String,
+    updated_at: String,
+    #[serde(flatten)]
+    data: PackagingItemData,
+    transport_company_label: String,
+    transport_company_color: String,
+    purchase_company_label: String,
+    purchase_company_color: String,
+}
+
 fn default_asset_color() -> String {
     "#4f4749".to_string()
 }
@@ -417,6 +458,32 @@ fn migrate_financial_database(connection: &Connection) -> Result<(), String> {
         .execute(
             "INSERT OR IGNORE INTO selects (id, options) VALUES ('warehouse_boxes', ?1)",
             params![default_warehouse_boxes],
+        )
+        .map_err(|error| error.to_string())?;
+
+    let default_packaging_transport_companies = json!([
+        { "value": "transport-correios", "label": "Correios", "color": "#f5d76e" },
+        { "value": "transport-mercado-livre", "label": "Mercado Livre", "color": "#f7c948" }
+    ])
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT OR IGNORE INTO selects (id, options) VALUES ('packaging_transport_companies', ?1)",
+            params![default_packaging_transport_companies],
+        )
+        .map_err(|error| error.to_string())?;
+
+    let default_packaging_purchase_companies = json!([
+        { "value": "purchase-mercado-livre", "label": "Mercado Livre", "color": "#f7c948" },
+        { "value": "purchase-amazon", "label": "Amazon", "color": "#8ecae6" }
+    ])
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT OR IGNORE INTO selects (id, options) VALUES ('packaging_purchase_companies', ?1)",
+            params![default_packaging_purchase_companies],
         )
         .map_err(|error| error.to_string())?;
 
@@ -1647,6 +1714,174 @@ fn remove_warehouse_item(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn list_packaging_transport_company_options(app: AppHandle) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+
+    load_select_options(&connection, "packaging_transport_companies")
+}
+
+#[tauri::command]
+fn add_packaging_transport_company_option(
+    app: AppHandle,
+    company: BankOptionInput,
+) -> Result<Vec<SelectOption>, String> {
+    add_packaging_option(app, company, "packaging_transport_companies", "transport-company")
+}
+
+#[tauri::command]
+fn update_packaging_transport_company_option(
+    app: AppHandle,
+    company: UpdateBankOptionInput,
+) -> Result<Vec<SelectOption>, String> {
+    update_packaging_option(app, company, "packaging_transport_companies", "Transport company")
+}
+
+#[tauri::command]
+fn remove_packaging_transport_company_option(
+    app: AppHandle,
+    value: String,
+) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, "packaging_transport_companies")?;
+
+    if is_feature_data_value_used(&connection, "packaging_item", "transport_company", &value)? {
+        return Err("This transport company is used by packaging items".to_string());
+    }
+
+    options.retain(|option| option.value != value);
+    save_select_options(&connection, "packaging_transport_companies", &options)?;
+
+    Ok(options)
+}
+
+#[tauri::command]
+fn list_packaging_purchase_company_options(app: AppHandle) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+
+    load_select_options(&connection, "packaging_purchase_companies")
+}
+
+#[tauri::command]
+fn add_packaging_purchase_company_option(
+    app: AppHandle,
+    company: BankOptionInput,
+) -> Result<Vec<SelectOption>, String> {
+    add_packaging_option(app, company, "packaging_purchase_companies", "purchase-company")
+}
+
+#[tauri::command]
+fn update_packaging_purchase_company_option(
+    app: AppHandle,
+    company: UpdateBankOptionInput,
+) -> Result<Vec<SelectOption>, String> {
+    update_packaging_option(app, company, "packaging_purchase_companies", "Purchase company")
+}
+
+#[tauri::command]
+fn remove_packaging_purchase_company_option(
+    app: AppHandle,
+    value: String,
+) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, "packaging_purchase_companies")?;
+
+    if is_feature_data_value_used(&connection, "packaging_item", "purchase_company", &value)? {
+        return Err("This purchase company is used by packaging items".to_string());
+    }
+
+    options.retain(|option| option.value != value);
+    save_select_options(&connection, "packaging_purchase_companies", &options)?;
+
+    Ok(options)
+}
+
+#[tauri::command]
+fn list_packaging_items(app: AppHandle) -> Result<Vec<PackagingItem>, String> {
+    let connection = connect(&app)?;
+
+    load_packaging_items(&connection)
+}
+
+#[tauri::command]
+fn add_packaging_item(app: AppHandle, item: PackagingItemInput) -> Result<(), String> {
+    let connection = connect(&app)?;
+    validate_packaging_item(
+        &connection,
+        &item.transport_company,
+        &item.purchase_company,
+        &item.start_date,
+        &item.description,
+    )?;
+
+    let data = json!({
+        "transport_company": item.transport_company,
+        "start_date": item.start_date.trim(),
+        "purchase_company": item.purchase_company,
+        "description": item.description.trim(),
+        "has_arrived": item.has_arrived
+    })
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT INTO features (id, feature, data) VALUES (?1, 'packaging_item', ?2)",
+            params![format!("packaging-item-{}", current_timestamp_id()?), data],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn update_packaging_item(app: AppHandle, item: UpdatePackagingItemInput) -> Result<(), String> {
+    let connection = connect(&app)?;
+    validate_packaging_item(
+        &connection,
+        &item.transport_company,
+        &item.purchase_company,
+        &item.start_date,
+        &item.description,
+    )?;
+
+    let data = json!({
+        "transport_company": item.transport_company,
+        "start_date": item.start_date.trim(),
+        "purchase_company": item.purchase_company,
+        "description": item.description.trim(),
+        "has_arrived": item.has_arrived
+    })
+    .to_string();
+    let updated = connection
+        .execute(
+            "UPDATE features
+            SET data = ?1, updated_at = CURRENT_TIMESTAMP
+            WHERE feature = 'packaging_item' AND id = ?2",
+            params![data, item.id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if updated == 0 {
+        return Err("Packaging item does not exist".to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_packaging_item(app: AppHandle, id: String) -> Result<(), String> {
+    let connection = connect(&app)?;
+
+    connection
+        .execute(
+            "DELETE FROM features WHERE feature = 'packaging_item' AND id = ?1",
+            params![id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
 fn validate_entry_type(entry_type: &str) -> Result<(), String> {
     match entry_type {
         "income" | "expense" | "investment" => Ok(()),
@@ -1674,6 +1909,92 @@ fn validate_date_value(date: &str) -> Result<(), String> {
     } else {
         Err("Date must use YYYY-MM-DD format".to_string())
     }
+}
+
+fn validate_packaging_item(
+    connection: &Connection,
+    transport_company: &str,
+    purchase_company: &str,
+    start_date: &str,
+    description: &str,
+) -> Result<(), String> {
+    let transport_companies = load_select_options(connection, "packaging_transport_companies")?;
+    let purchase_companies = load_select_options(connection, "packaging_purchase_companies")?;
+    let trimmed_start_date = start_date.trim();
+    let trimmed_description = description.trim();
+
+    validate_date_value(trimmed_start_date)?;
+
+    if trimmed_description.is_empty() {
+        return Err("Package description is required".to_string());
+    }
+
+    if !transport_companies
+        .iter()
+        .any(|option| option.value == transport_company)
+    {
+        return Err("Selected transport company does not exist".to_string());
+    }
+
+    if !purchase_companies
+        .iter()
+        .any(|option| option.value == purchase_company)
+    {
+        return Err("Selected purchase company does not exist".to_string());
+    }
+
+    Ok(())
+}
+
+fn add_packaging_option(
+    app: AppHandle,
+    company: BankOptionInput,
+    select_id: &str,
+    value_prefix: &str,
+) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, select_id)?;
+    let label = company.label.trim();
+
+    if label.is_empty() {
+        return Err("Company label is required".to_string());
+    }
+
+    options.push(SelectOption {
+        value: format!("{}-{}", value_prefix, current_timestamp_id()?),
+        label: label.to_string(),
+        color: normalize_color(&company.color),
+    });
+
+    save_select_options(&connection, select_id, &options)?;
+
+    Ok(options)
+}
+
+fn update_packaging_option(
+    app: AppHandle,
+    company: UpdateBankOptionInput,
+    select_id: &str,
+    label_name: &str,
+) -> Result<Vec<SelectOption>, String> {
+    let connection = connect(&app)?;
+    let mut options = load_select_options(&connection, select_id)?;
+    let label = company.label.trim();
+
+    if label.is_empty() {
+        return Err(format!("{label_name} label is required"));
+    }
+
+    let option = options
+        .iter_mut()
+        .find(|option| option.value == company.value)
+        .ok_or_else(|| format!("{label_name} does not exist"))?;
+
+    option.label = label.to_string();
+    option.color = normalize_color(&company.color);
+    save_select_options(&connection, select_id, &options)?;
+
+    Ok(options)
 }
 
 fn load_bank_options(connection: &Connection) -> Result<Vec<SelectOption>, String> {
@@ -1940,6 +2261,67 @@ fn load_warehouse_items(connection: &Connection) -> Result<Vec<WarehouseItem>, S
     Ok(items)
 }
 
+fn load_packaging_items(connection: &Connection) -> Result<Vec<PackagingItem>, String> {
+    let transport_companies = load_select_options(connection, "packaging_transport_companies")?;
+    let purchase_companies = load_select_options(connection, "packaging_purchase_companies")?;
+    let mut statement = connection
+        .prepare(
+            "SELECT id, data, created_at, updated_at
+            FROM features
+            WHERE feature = 'packaging_item'
+            ORDER BY json_extract(data, '$.start_date') DESC, updated_at DESC",
+        )
+        .map_err(|error| error.to_string())?;
+
+    let items = statement
+        .query_map([], |row| {
+            let data_json: String = row.get(1)?;
+            let data = serde_json::from_str::<PackagingItemData>(&data_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    1,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+            let transport_company = transport_companies
+                .iter()
+                .find(|option| option.value == data.transport_company)
+                .cloned();
+            let purchase_company = purchase_companies
+                .iter()
+                .find(|option| option.value == data.purchase_company)
+                .cloned();
+
+            Ok(PackagingItem {
+                id: row.get(0)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+                transport_company_label: transport_company
+                    .as_ref()
+                    .map(|option| option.label.clone())
+                    .unwrap_or_else(|| data.transport_company.clone()),
+                transport_company_color: transport_company
+                    .as_ref()
+                    .map(|option| option.color.clone())
+                    .unwrap_or_else(|| "#4f4749".to_string()),
+                purchase_company_label: purchase_company
+                    .as_ref()
+                    .map(|option| option.label.clone())
+                    .unwrap_or_else(|| data.purchase_company.clone()),
+                purchase_company_color: purchase_company
+                    .as_ref()
+                    .map(|option| option.color.clone())
+                    .unwrap_or_else(|| "#4f4749".to_string()),
+                data,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    Ok(items)
+}
+
 fn asset_ticker_exists(
     connection: &Connection,
     ticker: &str,
@@ -2087,6 +2469,18 @@ pub fn run() {
             add_warehouse_item,
             update_warehouse_item,
             remove_warehouse_item,
+            list_packaging_transport_company_options,
+            add_packaging_transport_company_option,
+            update_packaging_transport_company_option,
+            remove_packaging_transport_company_option,
+            list_packaging_purchase_company_options,
+            add_packaging_purchase_company_option,
+            update_packaging_purchase_company_option,
+            remove_packaging_purchase_company_option,
+            list_packaging_items,
+            add_packaging_item,
+            update_packaging_item,
+            remove_packaging_item,
             list_assets,
             add_asset,
             update_asset,
