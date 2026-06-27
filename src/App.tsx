@@ -118,7 +118,7 @@ const featureTitles: Record<FeatureId, { title: string; description: string }> =
 };
 
 function App() {
-  const [activeFeature, setActiveFeature] = useState<FeatureId>("financial");
+  const [activeFeature, setActiveFeature] = useState<FeatureId>("home");
   const [isAssetsDataOpen, setIsAssetsDataOpen] = useState(false);
   const [isAssetsEntryOpen, setIsAssetsEntryOpen] = useState(false);
   const [isCoinDataOpen, setIsCoinDataOpen] = useState(false);
@@ -293,6 +293,7 @@ function App() {
           <div className="pt-6">
             {activeFeature === "home" && (
               <div className="grid gap-4">
+                <BackupFeature />
                 <div className="max-w-3xl">
                   <HabitWeekPanel />
                 </div>

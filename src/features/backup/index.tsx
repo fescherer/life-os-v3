@@ -15,10 +15,10 @@ function BackupFeature() {
     }
   }
 
-  async function restoreBackup() {
+  async function importBackup() {
     try {
       const backupPath = await invoke<string>("restore_backup");
-      setBackupStatus(`Backup restored from ${backupPath}`);
+      setBackupStatus(`Data imported from ${backupPath}. Reopen a page to refresh its data.`);
     }
     catch (error) {
       setBackupStatus(String(error));
@@ -26,15 +26,16 @@ function BackupFeature() {
   }
 
   return (
-    <section className="flex max-w-2xl flex-col gap-6">
+    <section className="flex max-w-3xl flex-col gap-4 rounded-lg border border-border bg-card p-5">
       <div>
-        <h1 className="text-3xl font-semibold leading-tight">Backup</h1>
+        <h2 className="text-base font-semibold leading-tight">Your data</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Export or restore the SQLite database and app images folder.
+          Export every feature and image as a ZIP, or import a previous Life OS backup.
+          The ZIP also includes a readable SQL file.
         </p>
       </div>
 
-      <BackupActions onExport={exportBackup} onRestore={restoreBackup} />
+      <BackupActions onExport={exportBackup} onRestore={importBackup} />
 
       {backupStatus && (
         <p className="m-0 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">

@@ -3,10 +3,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
     fs,
+    io::Write,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Manager};
+use zip::{write::SimpleFileOptions, ZipArchive, ZipWriter};
 
 const DB_FILE_NAME: &str = "life-os.sqlite";
 const IMAGES_DIR_NAME: &str = "images";
@@ -722,21 +724,66 @@ fn current_timestamp_seconds() -> Result<String, String> {
         .to_string())
 }
 
-fn copy_dir(from: &Path, to: &Path) -> Result<(), String> {
-    fs::create_dir_all(to).map_err(|error| error.to_string())?;
+fn sql_identifier(value: &str) -> String {
+    format!("\"{}\"", value.replace('"', "\"\""))
+}
 
-    for entry in fs::read_dir(from).map_err(|error| error.to_string())? {
+fn create_sql_dump(connection: &Connection) -> Result<String, String> {
+    use rusqlite::types::ValueRef;
+
+    let mut dump = String::from("PRAGMA foreign_keys=OFF;\nBEGIN TRANSACTION;\n\n");
+    let mut schema_statement = connection
+        .prepare("SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+        .map_err(|error| error.to_string())?;
+    let tables = schema_statement
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    for (table, schema) in tables {
+        dump.push_str(&schema);
+        dump.push_str(";\n");
+        let query = format!("SELECT * FROM {}", sql_identifier(&table));
+        let mut statement = connection.prepare(&query).map_err(|error| error.to_string())?;
+        let column_count = statement.column_count();
+        let rows = statement.query_map([], |row| {
+            let mut values = Vec::with_capacity(column_count);
+            for index in 0..column_count {
+                let value = match row.get_ref(index)? {
+                    ValueRef::Null => "NULL".to_string(),
+                    ValueRef::Integer(value) => value.to_string(),
+                    ValueRef::Real(value) => value.to_string(),
+                    ValueRef::Text(value) => format!("'{}'", String::from_utf8_lossy(value).replace('\'', "''")),
+                    ValueRef::Blob(value) => format!("X'{}'", value.iter().map(|byte| format!("{byte:02X}")).collect::<String>()),
+                };
+                values.push(value);
+            }
+            Ok(values)
+        }).map_err(|error| error.to_string())?;
+
+        for row in rows {
+            dump.push_str(&format!("INSERT INTO {} VALUES({});\n", sql_identifier(&table), row.map_err(|error| error.to_string())?.join(",")));
+        }
+        dump.push('\n');
+    }
+    dump.push_str("COMMIT;\n");
+    Ok(dump)
+}
+
+fn add_images_to_zip(writer: &mut ZipWriter<fs::File>, root: &Path, directory: &Path) -> Result<(), String> {
+    for entry in fs::read_dir(directory).map_err(|error| error.to_string())? {
         let entry = entry.map_err(|error| error.to_string())?;
-        let source_path = entry.path();
-        let target_path = to.join(entry.file_name());
-
-        if source_path.is_dir() {
-            copy_dir(&source_path, &target_path)?;
+        let path = entry.path();
+        if path.is_dir() {
+            add_images_to_zip(writer, root, &path)?;
         } else {
-            fs::copy(&source_path, &target_path).map_err(|error| error.to_string())?;
+            let relative = path.strip_prefix(root).map_err(|error| error.to_string())?;
+            let archive_name = format!("images/{}", relative.to_string_lossy().replace('\\', "/"));
+            writer.start_file(archive_name, SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated)).map_err(|error| error.to_string())?;
+            writer.write_all(&fs::read(path).map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
         }
     }
-
     Ok(())
 }
 
@@ -3234,58 +3281,93 @@ fn normalize_color(color: &str) -> String {
 
 #[tauri::command]
 fn export_backup(app: AppHandle) -> Result<String, String> {
-    connect(&app)?;
-
-    let selected_dir = rfd::FileDialog::new()
-        .set_title("Choose where to save your Life OS backup")
-        .pick_folder()
+    let connection = connect(&app)?;
+    let timestamp = current_timestamp_seconds()?;
+    let selected_file = rfd::FileDialog::new()
+        .set_title("Export Life OS data")
+        .set_file_name(format!("life-os-backup-{timestamp}.zip"))
+        .add_filter("Life OS backup", &["zip"])
+        .save_file()
         .ok_or_else(|| "Export canceled".to_string())?;
+    let snapshot = app_data_dir(&app)?.join(format!("backup-{timestamp}.sqlite"));
+    connection
+        .execute("VACUUM INTO ?1", params![snapshot.to_string_lossy().to_string()])
+        .map_err(|error| error.to_string())?;
+    let snapshot_connection = Connection::open(&snapshot).map_err(|error| error.to_string())?;
+    let sql_dump = create_sql_dump(&snapshot_connection)?;
+    drop(snapshot_connection);
 
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| error.to_string())?
-        .as_secs();
-    let backup_dir = selected_dir.join(format!("life-os-backup-{timestamp}"));
-
-    fs::create_dir(&backup_dir).map_err(|error| error.to_string())?;
-    fs::copy(db_path(&app)?, backup_dir.join(DB_FILE_NAME)).map_err(|error| error.to_string())?;
-    copy_dir(&images_dir(&app)?, &backup_dir.join(IMAGES_DIR_NAME))?;
-
-    Ok(backup_dir.display().to_string())
+    let result = (|| -> Result<(), String> {
+        let file = fs::File::create(&selected_file).map_err(|error| error.to_string())?;
+        let mut writer = ZipWriter::new(file);
+        let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        writer.start_file(DB_FILE_NAME, options).map_err(|error| error.to_string())?;
+        writer.write_all(&fs::read(&snapshot).map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
+        writer.start_file("life-os.sql", options).map_err(|error| error.to_string())?;
+        writer.write_all(sql_dump.as_bytes()).map_err(|error| error.to_string())?;
+        writer.start_file("README.txt", options).map_err(|error| error.to_string())?;
+        writer.write_all(b"Life OS backup\n\nlife-os.sqlite: restorable database\nlife-os.sql: readable SQL export\nimages/: coin and review images\n").map_err(|error| error.to_string())?;
+        let image_root = images_dir(&app)?;
+        add_images_to_zip(&mut writer, &image_root, &image_root)?;
+        writer.finish().map_err(|error| error.to_string())?;
+        Ok(())
+    })();
+    let _ = fs::remove_file(snapshot);
+    result?;
+    Ok(selected_file.display().to_string())
 }
 
 #[tauri::command]
 fn restore_backup(app: AppHandle) -> Result<String, String> {
-    let backup_dir = rfd::FileDialog::new()
-        .set_title("Choose a Life OS backup folder")
-        .pick_folder()
-        .ok_or_else(|| "Restore canceled".to_string())?;
+    let backup_file = rfd::FileDialog::new()
+        .set_title("Import Life OS data")
+        .add_filter("Life OS backup", &["zip"])
+        .pick_file()
+        .ok_or_else(|| "Import canceled".to_string())?;
+    let staging = app_data_dir(&app)?.join(format!("import-{}", current_timestamp_id()?));
+    let staging_images = staging.join(IMAGES_DIR_NAME);
+    fs::create_dir_all(&staging_images).map_err(|error| error.to_string())?;
 
-    let backup_db = backup_dir.join(DB_FILE_NAME);
-    let backup_images = backup_dir.join(IMAGES_DIR_NAME);
+    let result = (|| -> Result<(), String> {
+        let file = fs::File::open(&backup_file).map_err(|error| error.to_string())?;
+        let mut archive = ZipArchive::new(file).map_err(|error| format!("Invalid backup ZIP: {error}"))?;
+        let mut database_found = false;
+        for index in 0..archive.len() {
+            let mut entry = archive.by_index(index).map_err(|error| error.to_string())?;
+            let name = entry.name().replace('\\', "/");
+            let destination = if name == DB_FILE_NAME {
+                database_found = true;
+                staging.join(DB_FILE_NAME)
+            } else if let Some(relative) = name.strip_prefix("images/") {
+                let safe_path = Path::new(relative);
+                if safe_path.components().any(|part| !matches!(part, std::path::Component::Normal(_))) || relative.is_empty() {
+                    continue;
+                }
+                staging_images.join(safe_path)
+            } else {
+                continue;
+            };
+            if entry.is_dir() { fs::create_dir_all(&destination).map_err(|error| error.to_string())?; continue; }
+            if let Some(parent) = destination.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
+            let mut output = fs::File::create(destination).map_err(|error| error.to_string())?;
+            std::io::copy(&mut entry, &mut output).map_err(|error| error.to_string())?;
+        }
+        if !database_found { return Err(format!("Backup ZIP must contain {DB_FILE_NAME}")); }
+        let imported = Connection::open(staging.join(DB_FILE_NAME)).map_err(|error| format!("Invalid backup database: {error}"))?;
+        let integrity: String = imported.query_row("PRAGMA integrity_check", [], |row| row.get(0)).map_err(|error| error.to_string())?;
+        if integrity != "ok" { return Err(format!("Backup database failed integrity check: {integrity}")); }
+        drop(imported);
 
-    if !backup_db.is_file() {
-        return Err(format!("Backup folder must contain {DB_FILE_NAME}"));
-    }
-
-    let current_db = db_path(&app)?;
-    let current_images = images_dir(&app)?;
-
-    fs::copy(backup_db, current_db).map_err(|error| error.to_string())?;
-
-    if current_images.exists() {
-        fs::remove_dir_all(&current_images).map_err(|error| error.to_string())?;
-    }
-
-    if backup_images.is_dir() {
-        copy_dir(&backup_images, &current_images)?;
-    } else {
-        fs::create_dir_all(&current_images).map_err(|error| error.to_string())?;
-    }
-
-    connect(&app)?;
-
-    Ok(backup_dir.display().to_string())
+        fs::copy(staging.join(DB_FILE_NAME), db_path(&app)?).map_err(|error| error.to_string())?;
+        let current_images = images_dir(&app)?;
+        if current_images.exists() { fs::remove_dir_all(&current_images).map_err(|error| error.to_string())?; }
+        fs::rename(&staging_images, &current_images).map_err(|error| error.to_string())?;
+        connect(&app)?;
+        Ok(())
+    })();
+    let _ = fs::remove_dir_all(staging);
+    result?;
+    Ok(backup_file.display().to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

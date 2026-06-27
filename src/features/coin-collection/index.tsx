@@ -293,7 +293,7 @@ function CoinCard({
       <button
         aria-label={`Ver imagem de ${coin.value}`}
         className={[
-          "my-3 flex h-28 items-center justify-center overflow-hidden rounded-sm bg-sidebar transition",
+          "my-3 flex h-64 items-center justify-center overflow-hidden rounded-sm bg-sidebar transition",
           imageSrc ? "cursor-zoom-in hover:bg-secondary" : "cursor-default",
         ].join(" ")}
         disabled={!imageSrc}

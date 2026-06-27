@@ -11,14 +11,14 @@ function BackupActions({ onExport, onRestore }: BackupActionsProps) {
         onClick={onExport}
         type="button"
       >
-        Export Backup
+        Export Data
       </button>
       <button
         className="rounded-lg border border-border bg-secondary px-4 py-2 font-medium text-secondary-foreground shadow-sm transition hover:bg-accent hover:text-accent-foreground active:bg-muted"
         onClick={onRestore}
         type="button"
       >
-        Restore Backup
+        Import Data
       </button>
     </div>
   );
