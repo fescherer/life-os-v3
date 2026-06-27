@@ -20,6 +20,7 @@ import AssetsFeature from "./features/assets";
 import BackupFeature from "./features/backup";
 import CoinCollectionFeature from "./features/coin-collection";
 import FinancialFeature from "./features/financial";
+import HabitsFeature, { HabitWeekPanel } from "./features/habits";
 import NotesFeature from "./features/notes";
 import PackagingFeature from "./features/packaging";
 import RemindersFeature, { ReminderAlerts } from "./features/reminders";
@@ -124,6 +125,7 @@ function App() {
   const [isCoinEntryOpen, setIsCoinEntryOpen] = useState(false);
   const [isFinancialDataOpen, setIsFinancialDataOpen] = useState(false);
   const [isFinancialEntryOpen, setIsFinancialEntryOpen] = useState(false);
+  const [isHabitEntryOpen, setIsHabitEntryOpen] = useState(false);
   const [isPackagingDataOpen, setIsPackagingDataOpen] = useState(false);
   const [isPackagingEntryOpen, setIsPackagingEntryOpen] = useState(false);
   const [isReminderEntryOpen, setIsReminderEntryOpen] = useState(false);
@@ -275,10 +277,28 @@ function App() {
                 New reminder
               </button>
             )}
+
+            {activeFeature === "habits" && (
+              <button
+                className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-primary px-4 text-sm text-primary-foreground shadow-sm transition hover:bg-primary/90"
+                onClick={() => setIsHabitEntryOpen(true)}
+                type="button"
+              >
+                <BadgePlus aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
+                New habit
+              </button>
+            )}
           </header>
 
           <div className="pt-6">
-            {activeFeature === "home" && <ReminderAlerts />}
+            {activeFeature === "home" && (
+              <div className="grid gap-4">
+                <div className="max-w-3xl">
+                  <HabitWeekPanel />
+                </div>
+                <ReminderAlerts />
+              </div>
+            )}
             {activeFeature === "assets" && (
               <AssetsFeature
                 isDataDialogOpen={isAssetsDataOpen}
@@ -293,6 +313,12 @@ function App() {
                 isEntryDialogOpen={isFinancialEntryOpen}
                 onCloseDataDialog={() => setIsFinancialDataOpen(false)}
                 onCloseEntryDialog={() => setIsFinancialEntryOpen(false)}
+              />
+            )}
+            {activeFeature === "habits" && (
+              <HabitsFeature
+                isEntryDialogOpen={isHabitEntryOpen}
+                onCloseEntryDialog={() => setIsHabitEntryOpen(false)}
               />
             )}
             {activeFeature === "coin-collection" && (

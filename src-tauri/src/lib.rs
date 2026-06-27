@@ -280,6 +280,89 @@ struct Reminder {
 }
 
 #[derive(Deserialize)]
+struct HabitInput {
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct UpdateHabitInput {
+    id: String,
+    name: String,
+    active: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+struct HabitData {
+    name: String,
+    #[serde(default = "default_true")]
+    active: bool,
+}
+
+#[derive(Serialize)]
+struct Habit {
+    id: String,
+    created_at: String,
+    updated_at: String,
+    #[serde(flatten)]
+    data: HabitData,
+}
+
+#[derive(Deserialize)]
+struct HabitCompletionInput {
+    week_start: String,
+    habit_id: String,
+    completed: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+struct HabitProgressData {
+    week_start: String,
+    completed_habit_ids: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct HabitProgress {
+    id: String,
+    created_at: String,
+    updated_at: String,
+    #[serde(flatten)]
+    data: HabitProgressData,
+}
+
+#[derive(Deserialize)]
+struct FinishHabitWeekInput {
+    week_start: String,
+    week_end: String,
+    reflection: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct HabitWeekSnapshot {
+    id: String,
+    name: String,
+    completed: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+struct HabitWeekData {
+    week_start: String,
+    week_end: String,
+    reflection: String,
+    completed_count: i64,
+    total_count: i64,
+    habits: Vec<HabitWeekSnapshot>,
+}
+
+#[derive(Serialize)]
+struct HabitWeek {
+    id: String,
+    created_at: String,
+    updated_at: String,
+    #[serde(flatten)]
+    data: HabitWeekData,
+}
+
+#[derive(Deserialize)]
 struct WarehouseItemInput {
     description: String,
     box_id: String,
@@ -352,6 +435,10 @@ struct PackagingItem {
 
 fn default_asset_color() -> String {
     "#4f4749".to_string()
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -1851,6 +1938,180 @@ fn remove_reminder(app: AppHandle, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn list_habits(app: AppHandle) -> Result<Vec<Habit>, String> {
+    let connection = connect(&app)?;
+
+    load_habits(&connection)
+}
+
+#[tauri::command]
+fn add_habit(app: AppHandle, habit: HabitInput) -> Result<(), String> {
+    let connection = connect(&app)?;
+    let name = habit.name.trim();
+
+    if name.is_empty() {
+        return Err("Habit name is required".to_string());
+    }
+
+    let data = json!({
+        "name": name,
+        "active": true
+    })
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT INTO features (id, feature, data) VALUES (?1, 'habit', ?2)",
+            params![format!("habit-{}", current_timestamp_id()?), data],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn update_habit(app: AppHandle, habit: UpdateHabitInput) -> Result<(), String> {
+    let connection = connect(&app)?;
+    let name = habit.name.trim();
+
+    if name.is_empty() {
+        return Err("Habit name is required".to_string());
+    }
+
+    let data = json!({
+        "name": name,
+        "active": habit.active
+    })
+    .to_string();
+    let updated = connection
+        .execute(
+            "UPDATE features
+            SET data = ?1, updated_at = CURRENT_TIMESTAMP
+            WHERE feature = 'habit' AND id = ?2",
+            params![data, habit.id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if updated == 0 {
+        return Err("Habit does not exist".to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_habit(app: AppHandle, id: String) -> Result<(), String> {
+    let connection = connect(&app)?;
+
+    connection
+        .execute(
+            "DELETE FROM features WHERE feature = 'habit' AND id = ?1",
+            params![id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn get_habit_progress(app: AppHandle, week_start: String) -> Result<HabitProgress, String> {
+    validate_date_value(&week_start)?;
+    let connection = connect(&app)?;
+
+    load_habit_progress(&connection, &week_start)
+}
+
+#[tauri::command]
+fn update_habit_completion(app: AppHandle, update: HabitCompletionInput) -> Result<(), String> {
+    validate_date_value(&update.week_start)?;
+    let connection = connect(&app)?;
+    let habits = load_habits(&connection)?;
+
+    if !habits.iter().any(|habit| habit.id == update.habit_id) {
+        return Err("Habit does not exist".to_string());
+    }
+
+    let mut progress = load_habit_progress(&connection, &update.week_start)?.data;
+
+    if update.completed {
+        if !progress
+            .completed_habit_ids
+            .iter()
+            .any(|habit_id| habit_id == &update.habit_id)
+        {
+            progress.completed_habit_ids.push(update.habit_id);
+        }
+    } else {
+        progress
+            .completed_habit_ids
+            .retain(|habit_id| habit_id != &update.habit_id);
+    }
+
+    save_habit_progress(&connection, &progress)
+}
+
+#[tauri::command]
+fn finish_habit_week(app: AppHandle, week: FinishHabitWeekInput) -> Result<(), String> {
+    validate_date_value(&week.week_start)?;
+    validate_date_value(&week.week_end)?;
+    let connection = connect(&app)?;
+    let habits = load_habits(&connection)?
+        .into_iter()
+        .filter(|habit| habit.data.active)
+        .collect::<Vec<_>>();
+    let progress = load_habit_progress(&connection, &week.week_start)?.data;
+    let snapshots = habits
+        .iter()
+        .map(|habit| HabitWeekSnapshot {
+            id: habit.id.clone(),
+            name: habit.data.name.clone(),
+            completed: progress
+                .completed_habit_ids
+                .iter()
+                .any(|habit_id| habit_id == &habit.id),
+        })
+        .collect::<Vec<_>>();
+    let completed_count = snapshots.iter().filter(|habit| habit.completed).count() as i64;
+    let total_count = snapshots.len() as i64;
+    let data = json!({
+        "week_start": week.week_start,
+        "week_end": week.week_end,
+        "reflection": week.reflection.trim(),
+        "completed_count": completed_count,
+        "total_count": total_count,
+        "habits": snapshots
+    })
+    .to_string();
+    let id = format!("habit-week-{}", week.week_start);
+    let updated = connection
+        .execute(
+            "UPDATE features
+            SET data = ?1, updated_at = CURRENT_TIMESTAMP
+            WHERE feature = 'habit_week' AND id = ?2",
+            params![data, id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if updated == 0 {
+        connection
+            .execute(
+                "INSERT INTO features (id, feature, data) VALUES (?1, 'habit_week', ?2)",
+                params![id, data],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn list_habit_weeks(app: AppHandle) -> Result<Vec<HabitWeek>, String> {
+    let connection = connect(&app)?;
+
+    load_habit_weeks(&connection)
+}
+
+#[tauri::command]
 fn list_warehouse_box_options(app: AppHandle) -> Result<Vec<SelectOption>, String> {
     let connection = connect(&app)?;
 
@@ -2676,6 +2937,144 @@ fn load_reminders(connection: &Connection) -> Result<Vec<Reminder>, String> {
     Ok(reminders)
 }
 
+fn load_habits(connection: &Connection) -> Result<Vec<Habit>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT id, data, created_at, updated_at
+            FROM features
+            WHERE feature = 'habit'
+            ORDER BY created_at ASC",
+        )
+        .map_err(|error| error.to_string())?;
+
+    let habits = statement
+        .query_map([], |row| {
+            let data_json: String = row.get(1)?;
+            let data = serde_json::from_str::<HabitData>(&data_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    1,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+
+            Ok(Habit {
+                id: row.get(0)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+                data,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    Ok(habits)
+}
+
+fn load_habit_progress(connection: &Connection, week_start: &str) -> Result<HabitProgress, String> {
+    let id = format!("habit-progress-{week_start}");
+    let result = connection.query_row(
+        "SELECT id, data, created_at, updated_at
+        FROM features
+        WHERE feature = 'habit_progress' AND id = ?1",
+        params![id],
+        |row| {
+            let data_json: String = row.get(1)?;
+            let data = serde_json::from_str::<HabitProgressData>(&data_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    1,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+
+            Ok(HabitProgress {
+                id: row.get(0)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+                data,
+            })
+        },
+    );
+
+    match result {
+        Ok(progress) => Ok(progress),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(HabitProgress {
+            id,
+            created_at: String::new(),
+            updated_at: String::new(),
+            data: HabitProgressData {
+                week_start: week_start.to_string(),
+                completed_habit_ids: Vec::new(),
+            },
+        }),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn save_habit_progress(
+    connection: &Connection,
+    progress: &HabitProgressData,
+) -> Result<(), String> {
+    let id = format!("habit-progress-{}", progress.week_start);
+    let data = serde_json::to_string(progress).map_err(|error| error.to_string())?;
+    let updated = connection
+        .execute(
+            "UPDATE features
+            SET data = ?1, updated_at = CURRENT_TIMESTAMP
+            WHERE feature = 'habit_progress' AND id = ?2",
+            params![data, id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if updated == 0 {
+        connection
+            .execute(
+                "INSERT INTO features (id, feature, data) VALUES (?1, 'habit_progress', ?2)",
+                params![id, data],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
+}
+
+fn load_habit_weeks(connection: &Connection) -> Result<Vec<HabitWeek>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT id, data, created_at, updated_at
+            FROM features
+            WHERE feature = 'habit_week'
+            ORDER BY json_extract(data, '$.week_start') DESC",
+        )
+        .map_err(|error| error.to_string())?;
+
+    let weeks = statement
+        .query_map([], |row| {
+            let data_json: String = row.get(1)?;
+            let data = serde_json::from_str::<HabitWeekData>(&data_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    1,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+
+            Ok(HabitWeek {
+                id: row.get(0)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+                data,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    Ok(weeks)
+}
+
 fn load_warehouse_items(connection: &Connection) -> Result<Vec<WarehouseItem>, String> {
     let boxes = load_select_options(connection, "warehouse_boxes")?;
     let mut statement = connection
@@ -2937,6 +3336,14 @@ pub fn run() {
             update_reminder,
             complete_reminder,
             remove_reminder,
+            list_habits,
+            add_habit,
+            update_habit,
+            remove_habit,
+            get_habit_progress,
+            update_habit_completion,
+            finish_habit_week,
+            list_habit_weeks,
             list_warehouse_box_options,
             add_warehouse_box_option,
             update_warehouse_box_option,
