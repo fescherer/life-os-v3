@@ -29,8 +29,9 @@ function DialogContent({
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
+        data-slot="dialog-content"
         className={cn(
-          "fixed left-1/2 top-1/2 z-20 max-h-[90vh] w-[calc(100%-3rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-md border border-border bg-sidebar p-5 shadow-lg outline-none",
+          "fixed left-1/2 top-1/2 z-20 max-h-[90vh] w-[calc(100%-3rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-md border border-border bg-sidebar p-5 shadow-lg outline-none [&:has([data-slot=select-trigger][data-state=open])]:pointer-events-auto!",
           className,
         )}
         {...props}

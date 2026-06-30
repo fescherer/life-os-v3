@@ -14,6 +14,7 @@ function SelectTrigger({
 }: React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>) {
   return (
     <SelectPrimitive.Trigger
+      data-slot="select-trigger"
       className={cn(
         "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-border bg-sidebar px-3 text-left text-xs text-foreground outline-none transition hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
         className,
@@ -38,8 +39,8 @@ function SelectContent({
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
         className={cn(
-          "z-30 max-h-72 min-w-[8rem] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-lg",
-          position === "popper" && "w-[var(--radix-select-trigger-width)]",
+          "z-30 max-h-72 min-w-32 overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-lg",
+          position === "popper" && "w-(--radix-select-trigger-width)",
           className,
         )}
         position={position}
