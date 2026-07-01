@@ -16,12 +16,13 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import type { LucideIcon } from "lucide-react";
+import { FileDropOverlay } from "./components/life-os-ui/file-drop-overlay";
 import AssetsFeature from "./features/assets";
 import BackupFeature from "./features/backup";
 import CoinCollectionFeature from "./features/coin-collection";
 import FinancialFeature from "./features/financial";
 import HabitsFeature, { HabitWeekPanel } from "./features/habits";
-import NotesFeature from "./features/notes";
+import NotesFeature, { NotesPanel } from "./features/notes";
 import PackagingFeature from "./features/packaging";
 import RemindersFeature, { ReminderAlerts } from "./features/reminders";
 import ReviewsFeature from "./features/reviews";
@@ -126,6 +127,8 @@ function App() {
   const [isFinancialDataOpen, setIsFinancialDataOpen] = useState(false);
   const [isFinancialEntryOpen, setIsFinancialEntryOpen] = useState(false);
   const [isHabitEntryOpen, setIsHabitEntryOpen] = useState(false);
+  const [isNoteEntryOpen, setIsNoteEntryOpen] = useState(false);
+  const [droppedNoteFiles, setDroppedNoteFiles] = useState<File[]>([]);
   const [isPackagingDataOpen, setIsPackagingDataOpen] = useState(false);
   const [isPackagingEntryOpen, setIsPackagingEntryOpen] = useState(false);
   const [isReminderEntryOpen, setIsReminderEntryOpen] = useState(false);
@@ -136,240 +139,269 @@ function App() {
   const activeTitle = featureTitles[activeFeature];
 
   return (
-    <main className="flex min-h-screen flex-col bg-background font-mono font-bold text-foreground antialiased">
-      <div className="flex min-h-0 flex-1 gap-3 px-3 py-2">
-        <aside className="flex w-40 shrink-0 flex-col rounded border border-border bg-sidebar px-2 py-4 text-sidebar-foreground">
-          <img
-            alt="Life OS"
-            className="mb-6 h-auto w-36"
-            src="/Logo.svg"
-          />
+    <FileDropOverlay
+      disabled={activeFeature !== "notes"}
+      label="Drop files to create a note"
+      onDrop={(files) => {
+        setDroppedNoteFiles(files);
+        setIsNoteEntryOpen(true);
+      }}
+    >
+      <main className="flex min-h-screen flex-col bg-background font-mono font-bold text-foreground antialiased">
+        <div className="flex min-h-0 flex-1 gap-3 px-3 py-2">
+          <aside className="flex w-40 shrink-0 flex-col rounded border border-border bg-sidebar px-2 py-4 text-sidebar-foreground">
+            <img
+              alt="Life OS"
+              className="mb-6 h-auto w-36"
+              src="/Logo.svg"
+            />
 
-          <nav className="flex flex-1 flex-col gap-3.5">
-            {navItems.map((item) => {
-              const NavIcon = item.icon;
+            <nav className="flex flex-1 flex-col gap-3.5">
+              {navItems.map((item) => {
+                const NavIcon = item.icon;
 
-              return (
-                <button
-                  className={[
-                    "flex h-7 w-full items-center gap-3 rounded-md px-2 text-left text-xs leading-none transition",
-                    activeFeature === item.id
-                      ? "bg-primary text-primary-foreground"
-                      : "text-sidebar-foreground hover:bg-secondary hover:text-foreground",
-                  ].join(" ")}
-                  key={item.id}
-                  onClick={() => setActiveFeature(item.id)}
-                  type="button"
-                >
-                  <NavIcon aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
-                  <span className="truncate">{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
+                return (
+                  <button
+                    className={[
+                      "flex h-7 w-full items-center gap-3 rounded-md px-2 text-left text-xs leading-none transition",
+                      activeFeature === item.id
+                        ? "bg-primary text-primary-foreground"
+                        : "text-sidebar-foreground hover:bg-secondary hover:text-foreground",
+                    ].join(" ")}
+                    key={item.id}
+                    onClick={() => setActiveFeature(item.id)}
+                    type="button"
+                  >
+                    <NavIcon aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
 
-          <button
-            className={[
-              "flex h-7 w-full items-center gap-3 rounded-md px-2 text-left text-xs leading-none transition",
-              activeFeature === "configuration"
-                ? "bg-primary text-primary-foreground"
-                : "text-sidebar-foreground hover:bg-secondary hover:text-foreground",
-            ].join(" ")}
-            onClick={() => setActiveFeature("configuration")}
-            type="button"
-          >
-            <Settings aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
-            <span className="truncate">Configuration</span>
-          </button>
-        </aside>
+            <button
+              className={[
+                "flex h-7 w-full items-center gap-3 rounded-md px-2 text-left text-xs leading-none transition",
+                activeFeature === "configuration"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-sidebar-foreground hover:bg-secondary hover:text-foreground",
+              ].join(" ")}
+              onClick={() => setActiveFeature("configuration")}
+              type="button"
+            >
+              <Settings aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
+              <span className="truncate">Configuration</span>
+            </button>
+          </aside>
 
-        <section className="min-w-0 flex-1 px-1 pt-3">
-          <header className="flex items-start justify-between gap-6 border-b border-border pb-4">
-            <div>
-              <h1 className="text-xl leading-none tracking-normal">{activeTitle.title}</h1>
-              <p className="mt-2 text-sm leading-none text-muted-foreground">
-                {activeTitle.description}
-              </p>
-            </div>
+          <section className="min-w-0 flex-1 px-1 pt-3">
+            <header className="flex items-start justify-between gap-6 border-b border-border pb-4">
+              <div>
+                <h1 className="text-xl leading-none tracking-normal">{activeTitle.title}</h1>
+                <p className="mt-2 text-sm leading-none text-muted-foreground">
+                  {activeTitle.description}
+                </p>
+              </div>
 
-            {(activeFeature === "financial" || activeFeature === "assets" || activeFeature === "coin-collection" || activeFeature === "warehouse" || activeFeature === "packaging" || activeFeature === "reviews") && (
-              <div className="flex shrink-0 gap-5">
-                <button
-                  className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-secondary px-4 text-sm text-secondary-foreground shadow-sm transition hover:bg-accent"
-                  onClick={() => {
-                    if (activeFeature === "coin-collection") {
-                      setIsCoinDataOpen(true);
-                      return;
-                    }
+              {(activeFeature === "financial" || activeFeature === "assets" || activeFeature === "coin-collection" || activeFeature === "warehouse" || activeFeature === "packaging" || activeFeature === "reviews") && (
+                <div className="flex shrink-0 gap-5">
+                  <button
+                    className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-secondary px-4 text-sm text-secondary-foreground shadow-sm transition hover:bg-accent"
+                    onClick={() => {
+                      if (activeFeature === "coin-collection") {
+                        setIsCoinDataOpen(true);
+                        return;
+                      }
 
-                    if (activeFeature === "assets") {
-                      setIsAssetsDataOpen(true);
-                      return;
-                    }
+                      if (activeFeature === "assets") {
+                        setIsAssetsDataOpen(true);
+                        return;
+                      }
 
-                    if (activeFeature === "warehouse") {
-                      setIsWarehouseDataOpen(true);
-                      return;
-                    }
+                      if (activeFeature === "warehouse") {
+                        setIsWarehouseDataOpen(true);
+                        return;
+                      }
 
-                    if (activeFeature === "packaging") {
-                      setIsPackagingDataOpen(true);
-                      return;
-                    }
+                      if (activeFeature === "packaging") {
+                        setIsPackagingDataOpen(true);
+                        return;
+                      }
 
-                    if (activeFeature === "reviews") {
-                      setIsReviewsDataOpen(true);
-                      return;
-                    }
+                      if (activeFeature === "reviews") {
+                        setIsReviewsDataOpen(true);
+                        return;
+                      }
 
-                    setIsFinancialDataOpen(true);
-                  }}
-                  type="button"
-                >
-                  <Download aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
-                  Gerenciar dados
-                </button>
+                      setIsFinancialDataOpen(true);
+                    }}
+                    type="button"
+                  >
+                    <Download aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
+                    Gerenciar dados
+                  </button>
+                  <button
+                    className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-primary px-4 text-sm text-primary-foreground shadow-sm transition hover:bg-primary/90"
+                    onClick={() => {
+                      if (activeFeature === "coin-collection") {
+                        setIsCoinEntryOpen(true);
+                        return;
+                      }
+
+                      if (activeFeature === "assets") {
+                        setIsAssetsEntryOpen(true);
+                        return;
+                      }
+
+                      if (activeFeature === "warehouse") {
+                        setIsWarehouseEntryOpen(true);
+                        return;
+                      }
+
+                      if (activeFeature === "packaging") {
+                        setIsPackagingEntryOpen(true);
+                        return;
+                      }
+
+                      if (activeFeature === "reviews") {
+                        setIsReviewsEntryOpen(true);
+                        return;
+                      }
+
+                      setIsFinancialEntryOpen(true);
+                    }}
+                    type="button"
+                  >
+                    <BadgePlus aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
+                    {activeFeature === "financial" ? "Novo lancamento" : "New Item"}
+                  </button>
+                </div>
+              )}
+
+              {activeFeature === "reminders" && (
                 <button
                   className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-primary px-4 text-sm text-primary-foreground shadow-sm transition hover:bg-primary/90"
-                  onClick={() => {
-                    if (activeFeature === "coin-collection") {
-                      setIsCoinEntryOpen(true);
-                      return;
-                    }
-
-                    if (activeFeature === "assets") {
-                      setIsAssetsEntryOpen(true);
-                      return;
-                    }
-
-                    if (activeFeature === "warehouse") {
-                      setIsWarehouseEntryOpen(true);
-                      return;
-                    }
-
-                    if (activeFeature === "packaging") {
-                      setIsPackagingEntryOpen(true);
-                      return;
-                    }
-
-                    if (activeFeature === "reviews") {
-                      setIsReviewsEntryOpen(true);
-                      return;
-                    }
-
-                    setIsFinancialEntryOpen(true);
-                  }}
+                  onClick={() => setIsReminderEntryOpen(true)}
                   type="button"
                 >
                   <BadgePlus aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
-                  {activeFeature === "financial" ? "Novo lancamento" : "New Item"}
+                  New reminder
                 </button>
-              </div>
-            )}
+              )}
 
-            {activeFeature === "reminders" && (
-              <button
-                className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-primary px-4 text-sm text-primary-foreground shadow-sm transition hover:bg-primary/90"
-                onClick={() => setIsReminderEntryOpen(true)}
-                type="button"
-              >
-                <BadgePlus aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
-                New reminder
-              </button>
-            )}
+              {activeFeature === "notes" && (
+                <button
+                  className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-primary px-4 text-sm text-primary-foreground shadow-sm transition hover:bg-primary/90"
+                  onClick={() => setIsNoteEntryOpen(true)}
+                  type="button"
+                >
+                  <BadgePlus aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
+                  New note
+                </button>
+              )}
 
-            {activeFeature === "habits" && (
-              <button
-                className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-primary px-4 text-sm text-primary-foreground shadow-sm transition hover:bg-primary/90"
-                onClick={() => setIsHabitEntryOpen(true)}
-                type="button"
-              >
-                <BadgePlus aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
-                New habit
-              </button>
-            )}
-          </header>
+              {activeFeature === "habits" && (
+                <button
+                  className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-primary px-4 text-sm text-primary-foreground shadow-sm transition hover:bg-primary/90"
+                  onClick={() => setIsHabitEntryOpen(true)}
+                  type="button"
+                >
+                  <BadgePlus aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
+                  New habit
+                </button>
+              )}
+            </header>
 
-          <div className="pt-6">
-            {activeFeature === "home" && (
-              <div className="grid gap-4">
-                <BackupFeature />
-                <div className="max-w-3xl">
-                  <HabitWeekPanel />
+            <div className="pt-6">
+              {activeFeature === "home" && (
+                <div className="grid gap-4">
+                  <NotesPanel />
+                  <BackupFeature />
+                  <div className="max-w-3xl">
+                    <HabitWeekPanel />
+                  </div>
+                  <ReminderAlerts />
                 </div>
-                <ReminderAlerts />
-              </div>
-            )}
-            {activeFeature === "assets" && (
-              <AssetsFeature
-                isDataDialogOpen={isAssetsDataOpen}
-                isEntryDialogOpen={isAssetsEntryOpen}
-                onCloseDataDialog={() => setIsAssetsDataOpen(false)}
-                onCloseEntryDialog={() => setIsAssetsEntryOpen(false)}
-              />
-            )}
-            {activeFeature === "financial" && (
-              <FinancialFeature
-                isDataDialogOpen={isFinancialDataOpen}
-                isEntryDialogOpen={isFinancialEntryOpen}
-                onCloseDataDialog={() => setIsFinancialDataOpen(false)}
-                onCloseEntryDialog={() => setIsFinancialEntryOpen(false)}
-              />
-            )}
-            {activeFeature === "habits" && (
-              <HabitsFeature
-                isEntryDialogOpen={isHabitEntryOpen}
-                onCloseEntryDialog={() => setIsHabitEntryOpen(false)}
-              />
-            )}
-            {activeFeature === "coin-collection" && (
-              <CoinCollectionFeature
-                isDataDialogOpen={isCoinDataOpen}
-                isEntryDialogOpen={isCoinEntryOpen}
-                onCloseDataDialog={() => setIsCoinDataOpen(false)}
-                onCloseEntryDialog={() => setIsCoinEntryOpen(false)}
-              />
-            )}
-            {activeFeature === "notes" && <NotesFeature />}
-            {activeFeature === "packaging" && (
-              <PackagingFeature
-                isDataDialogOpen={isPackagingDataOpen}
-                isEntryDialogOpen={isPackagingEntryOpen}
-                onCloseDataDialog={() => setIsPackagingDataOpen(false)}
-                onCloseEntryDialog={() => setIsPackagingEntryOpen(false)}
-              />
-            )}
-            {activeFeature === "reminders" && (
-              <RemindersFeature
-                isEntryDialogOpen={isReminderEntryOpen}
-                onCloseEntryDialog={() => setIsReminderEntryOpen(false)}
-              />
-            )}
-            {activeFeature === "reviews" && (
-              <ReviewsFeature
-                isDataDialogOpen={isReviewsDataOpen}
-                isEntryDialogOpen={isReviewsEntryOpen}
-                onCloseDataDialog={() => setIsReviewsDataOpen(false)}
-                onCloseEntryDialog={() => setIsReviewsEntryOpen(false)}
-              />
-            )}
-            {activeFeature === "warehouse" && (
-              <WarehouseFeature
-                isDataDialogOpen={isWarehouseDataOpen}
-                isEntryDialogOpen={isWarehouseEntryOpen}
-                onCloseDataDialog={() => setIsWarehouseDataOpen(false)}
-                onCloseEntryDialog={() => setIsWarehouseEntryOpen(false)}
-              />
-            )}
-            {activeFeature === "backup" && <BackupFeature />}
-          </div>
-        </section>
-      </div>
+              )}
+              {activeFeature === "assets" && (
+                <AssetsFeature
+                  isDataDialogOpen={isAssetsDataOpen}
+                  isEntryDialogOpen={isAssetsEntryOpen}
+                  onCloseDataDialog={() => setIsAssetsDataOpen(false)}
+                  onCloseEntryDialog={() => setIsAssetsEntryOpen(false)}
+                />
+              )}
+              {activeFeature === "financial" && (
+                <FinancialFeature
+                  isDataDialogOpen={isFinancialDataOpen}
+                  isEntryDialogOpen={isFinancialEntryOpen}
+                  onCloseDataDialog={() => setIsFinancialDataOpen(false)}
+                  onCloseEntryDialog={() => setIsFinancialEntryOpen(false)}
+                />
+              )}
+              {activeFeature === "habits" && (
+                <HabitsFeature
+                  isEntryDialogOpen={isHabitEntryOpen}
+                  onCloseEntryDialog={() => setIsHabitEntryOpen(false)}
+                />
+              )}
+              {activeFeature === "coin-collection" && (
+                <CoinCollectionFeature
+                  isDataDialogOpen={isCoinDataOpen}
+                  isEntryDialogOpen={isCoinEntryOpen}
+                  onCloseDataDialog={() => setIsCoinDataOpen(false)}
+                  onCloseEntryDialog={() => setIsCoinEntryOpen(false)}
+                />
+              )}
+              {activeFeature === "notes" && (
+                <NotesFeature
+                  droppedFiles={droppedNoteFiles}
+                  isEntryDialogOpen={isNoteEntryOpen}
+                  onCloseEntryDialog={() => setIsNoteEntryOpen(false)}
+                  onDroppedFilesHandled={() => setDroppedNoteFiles([])}
+                  onOpenEntryDialog={() => setIsNoteEntryOpen(true)}
+                />
+              )}
+              {activeFeature === "packaging" && (
+                <PackagingFeature
+                  isDataDialogOpen={isPackagingDataOpen}
+                  isEntryDialogOpen={isPackagingEntryOpen}
+                  onCloseDataDialog={() => setIsPackagingDataOpen(false)}
+                  onCloseEntryDialog={() => setIsPackagingEntryOpen(false)}
+                />
+              )}
+              {activeFeature === "reminders" && (
+                <RemindersFeature
+                  isEntryDialogOpen={isReminderEntryOpen}
+                  onCloseEntryDialog={() => setIsReminderEntryOpen(false)}
+                />
+              )}
+              {activeFeature === "reviews" && (
+                <ReviewsFeature
+                  isDataDialogOpen={isReviewsDataOpen}
+                  isEntryDialogOpen={isReviewsEntryOpen}
+                  onCloseDataDialog={() => setIsReviewsDataOpen(false)}
+                  onCloseEntryDialog={() => setIsReviewsEntryOpen(false)}
+                />
+              )}
+              {activeFeature === "warehouse" && (
+                <WarehouseFeature
+                  isDataDialogOpen={isWarehouseDataOpen}
+                  isEntryDialogOpen={isWarehouseEntryOpen}
+                  onCloseDataDialog={() => setIsWarehouseDataOpen(false)}
+                  onCloseEntryDialog={() => setIsWarehouseEntryOpen(false)}
+                />
+              )}
+              {activeFeature === "backup" && <BackupFeature />}
+            </div>
+          </section>
+        </div>
 
-      <footer className="flex h-14 items-center justify-center border border-border bg-sidebar px-6 text-center text-xs leading-none text-muted-foreground">
-        Created by Fennec Tales
-      </footer>
-    </main>
+        <footer className="flex h-14 items-center justify-center border border-border bg-sidebar px-6 text-center text-xs leading-none text-muted-foreground">
+          Created by Fennec Tales
+        </footer>
+      </main>
+    </FileDropOverlay>
   );
 }
 

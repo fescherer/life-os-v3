@@ -100,6 +100,17 @@ struct BackupManifest {
 struct Note {
     id: i64,
     body: String,
+    images: Vec<String>,
+    files: Vec<NoteFile>,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Deserialize, Serialize)]
+struct NoteFile {
+    name: String,
+    file_type: String,
+    data: String,
 }
 
 #[derive(Deserialize)]
@@ -561,8 +572,58 @@ fn migrate_database(connection: &Connection) -> Result<(), String> {
         .execute(
             "CREATE TABLE IF NOT EXISTS notes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                body TEXT NOT NULL
+                body TEXT NOT NULL,
+                images TEXT NOT NULL DEFAULT '[]',
+                files TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if !table_has_column(connection, "notes", "images")? {
+        connection
+            .execute("ALTER TABLE notes ADD COLUMN images TEXT", [])
+            .map_err(|error| error.to_string())?;
+    }
+
+    connection
+        .execute("UPDATE notes SET images = '[]' WHERE images IS NULL", [])
+        .map_err(|error| error.to_string())?;
+
+    if !table_has_column(connection, "notes", "files")? {
+        connection
+            .execute("ALTER TABLE notes ADD COLUMN files TEXT", [])
+            .map_err(|error| error.to_string())?;
+    }
+
+    connection
+        .execute("UPDATE notes SET files = '[]' WHERE files IS NULL", [])
+        .map_err(|error| error.to_string())?;
+
+    if !table_has_column(connection, "notes", "created_at")? {
+        connection
+            .execute("ALTER TABLE notes ADD COLUMN created_at TEXT", [])
+            .map_err(|error| error.to_string())?;
+    }
+
+    connection
+        .execute(
+            "UPDATE notes SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if !table_has_column(connection, "notes", "updated_at")? {
+        connection
+            .execute("ALTER TABLE notes ADD COLUMN updated_at TEXT", [])
+            .map_err(|error| error.to_string())?;
+    }
+
+    connection
+        .execute(
+            "UPDATE notes SET updated_at = created_at WHERE updated_at IS NULL",
             [],
         )
         .map_err(|error| error.to_string())?;
@@ -934,11 +995,28 @@ fn prune_backup_database(
 }
 
 #[tauri::command]
-fn add_note(app: AppHandle, body: String) -> Result<(), String> {
+fn add_note(
+    app: AppHandle,
+    body: String,
+    images: Vec<String>,
+    files: Vec<NoteFile>,
+) -> Result<(), String> {
     let connection = connect(&app)?;
+    let body = body.trim();
+
+    if body.is_empty() && images.is_empty() && files.is_empty() {
+        return Err("Note is required".to_string());
+    }
+
+    let images = serde_json::to_string(&images).map_err(|error| error.to_string())?;
+    let files = serde_json::to_string(&files).map_err(|error| error.to_string())?;
 
     connection
-        .execute("INSERT INTO notes (body) VALUES (?1)", params![body])
+        .execute(
+            "INSERT INTO notes (body, images, files, created_at, updated_at)
+             VALUES (?1, ?2, ?3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            params![body, images, files],
+        )
         .map_err(|error| error.to_string())?;
 
     Ok(())
@@ -948,14 +1026,38 @@ fn add_note(app: AppHandle, body: String) -> Result<(), String> {
 fn list_notes(app: AppHandle) -> Result<Vec<Note>, String> {
     let connection = connect(&app)?;
     let mut statement = connection
-        .prepare("SELECT id, body FROM notes ORDER BY id DESC")
+        .prepare(
+            "SELECT id, body, images, files, created_at, updated_at
+             FROM notes ORDER BY created_at ASC, id ASC",
+        )
         .map_err(|error| error.to_string())?;
 
     let notes = statement
         .query_map([], |row| {
+            let images_json: String = row.get(2)?;
+            let files_json: String = row.get(3)?;
+            let images = serde_json::from_str::<Vec<String>>(&images_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    2,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+            let files = serde_json::from_str::<Vec<NoteFile>>(&files_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    3,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+
             Ok(Note {
                 id: row.get(0)?,
                 body: row.get(1)?,
+                images,
+                files,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
             })
         })
         .map_err(|error| error.to_string())?
@@ -963,6 +1065,48 @@ fn list_notes(app: AppHandle) -> Result<Vec<Note>, String> {
         .map_err(|error| error.to_string())?;
 
     Ok(notes)
+}
+
+#[tauri::command]
+fn update_note(
+    app: AppHandle,
+    id: i64,
+    body: String,
+    images: Vec<String>,
+    files: Vec<NoteFile>,
+) -> Result<(), String> {
+    let connection = connect(&app)?;
+    let body = body.trim();
+
+    if body.is_empty() && images.is_empty() && files.is_empty() {
+        return Err("Note is required".to_string());
+    }
+
+    let images = serde_json::to_string(&images).map_err(|error| error.to_string())?;
+    let files = serde_json::to_string(&files).map_err(|error| error.to_string())?;
+
+    let updated = connection
+        .execute(
+            "UPDATE notes SET body = ?1, images = ?2, files = ?3, updated_at = CURRENT_TIMESTAMP WHERE id = ?4",
+            params![body, images, files, id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if updated == 0 {
+        return Err("Note does not exist".to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_note(app: AppHandle, id: i64) -> Result<(), String> {
+    let connection = connect(&app)?;
+    connection
+        .execute("DELETE FROM notes WHERE id = ?1", params![id])
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -3602,7 +3746,8 @@ fn restore_backup(app: AppHandle, features: Vec<String>) -> Result<String, Strin
                     .map_err(|error| error.to_string())?;
                 transaction
                     .execute(
-                        "INSERT INTO notes (id, body) SELECT id, body FROM imported.notes",
+                        "INSERT INTO notes (id, body, images, files, created_at, updated_at)
+                         SELECT id, body, images, files, created_at, updated_at FROM imported.notes",
                         [],
                     )
                     .map_err(|error| error.to_string())?;
@@ -3653,6 +3798,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             add_note,
             list_notes,
+            update_note,
+            remove_note,
             list_financial_entries,
             add_financial_entry,
             list_bank_options,
