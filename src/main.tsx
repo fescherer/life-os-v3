@@ -2,9 +2,11 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "./App.css";
 import App from "./App";
+import LifeOsToast from "./components/life-os-ui/toast";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
+    <LifeOsToast />
     <App />
   </React.StrictMode>,
 );

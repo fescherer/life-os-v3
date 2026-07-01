@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
     fs,
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -12,6 +12,89 @@ use zip::{write::SimpleFileOptions, ZipArchive, ZipWriter};
 
 const DB_FILE_NAME: &str = "life-os.sqlite";
 const IMAGES_DIR_NAME: &str = "images";
+
+struct BackupFeature {
+    id: &'static str,
+    feature_rows: &'static [&'static str],
+    select_rows: &'static [&'static str],
+    image_dir: Option<&'static str>,
+    includes_notes: bool,
+}
+
+const BACKUP_FEATURES: &[BackupFeature] = &[
+    BackupFeature {
+        id: "notes",
+        feature_rows: &[],
+        select_rows: &[],
+        image_dir: None,
+        includes_notes: true,
+    },
+    BackupFeature {
+        id: "habits",
+        feature_rows: &["habit", "habit_progress", "habit_week"],
+        select_rows: &[],
+        image_dir: None,
+        includes_notes: false,
+    },
+    BackupFeature {
+        id: "financial",
+        feature_rows: &["financial"],
+        select_rows: &["banks"],
+        image_dir: None,
+        includes_notes: false,
+    },
+    BackupFeature {
+        id: "assets",
+        feature_rows: &["asset", "assets_register"],
+        select_rows: &["asset_banks", "asset_types"],
+        image_dir: None,
+        includes_notes: false,
+    },
+    BackupFeature {
+        id: "coin-collection",
+        feature_rows: &["coin"],
+        select_rows: &["coin_families"],
+        image_dir: Some("coin-collection"),
+        includes_notes: false,
+    },
+    BackupFeature {
+        id: "packaging",
+        feature_rows: &["packaging_item"],
+        select_rows: &[
+            "packaging_transport_companies",
+            "packaging_purchase_companies",
+        ],
+        image_dir: None,
+        includes_notes: false,
+    },
+    BackupFeature {
+        id: "reminders",
+        feature_rows: &["reminder"],
+        select_rows: &[],
+        image_dir: None,
+        includes_notes: false,
+    },
+    BackupFeature {
+        id: "reviews",
+        feature_rows: &["review"],
+        select_rows: &["review_media_types", "review_statuses"],
+        image_dir: Some("reviews"),
+        includes_notes: false,
+    },
+    BackupFeature {
+        id: "warehouse",
+        feature_rows: &["warehouse_item"],
+        select_rows: &["warehouse_boxes"],
+        image_dir: None,
+        includes_notes: false,
+    },
+];
+
+#[derive(Deserialize, Serialize)]
+struct BackupManifest {
+    version: u8,
+    features: Vec<String>,
+}
 
 #[derive(Serialize)]
 struct Note {
@@ -771,7 +854,11 @@ fn create_sql_dump(connection: &Connection) -> Result<String, String> {
     Ok(dump)
 }
 
-fn add_images_to_zip(writer: &mut ZipWriter<fs::File>, root: &Path, directory: &Path) -> Result<(), String> {
+fn add_images_to_zip(
+    writer: &mut ZipWriter<fs::File>,
+    root: &Path,
+    directory: &Path,
+) -> Result<(), String> {
     for entry in fs::read_dir(directory).map_err(|error| error.to_string())? {
         let entry = entry.map_err(|error| error.to_string())?;
         let path = entry.path();
@@ -780,10 +867,69 @@ fn add_images_to_zip(writer: &mut ZipWriter<fs::File>, root: &Path, directory: &
         } else {
             let relative = path.strip_prefix(root).map_err(|error| error.to_string())?;
             let archive_name = format!("images/{}", relative.to_string_lossy().replace('\\', "/"));
-            writer.start_file(archive_name, SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated)).map_err(|error| error.to_string())?;
-            writer.write_all(&fs::read(path).map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
+            writer
+                .start_file(
+                    archive_name,
+                    SimpleFileOptions::default()
+                        .compression_method(zip::CompressionMethod::Deflated),
+                )
+                .map_err(|error| error.to_string())?;
+            writer
+                .write_all(&fs::read(path).map_err(|error| error.to_string())?)
+                .map_err(|error| error.to_string())?;
         }
     }
+    Ok(())
+}
+
+fn selected_backup_features(feature_ids: &[String]) -> Result<Vec<&'static BackupFeature>, String> {
+    if feature_ids.is_empty() {
+        return Err("Select at least one feature".to_string());
+    }
+
+    feature_ids
+        .iter()
+        .map(|id| {
+            BACKUP_FEATURES
+                .iter()
+                .find(|feature| feature.id == id)
+                .ok_or_else(|| format!("Unknown backup feature: {id}"))
+        })
+        .collect()
+}
+
+fn prune_backup_database(
+    connection: &Connection,
+    selected: &[&BackupFeature],
+) -> Result<(), String> {
+    for feature in BACKUP_FEATURES {
+        if selected
+            .iter()
+            .any(|selected_feature| selected_feature.id == feature.id)
+        {
+            continue;
+        }
+
+        if feature.includes_notes {
+            connection
+                .execute("DELETE FROM notes", [])
+                .map_err(|error| error.to_string())?;
+        }
+        for feature_row in feature.feature_rows {
+            connection
+                .execute(
+                    "DELETE FROM features WHERE feature = ?1",
+                    params![feature_row],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        for select_row in feature.select_rows {
+            connection
+                .execute("DELETE FROM selects WHERE id = ?1", params![select_row])
+                .map_err(|error| error.to_string())?;
+        }
+    }
+
     Ok(())
 }
 
@@ -3280,7 +3426,8 @@ fn normalize_color(color: &str) -> String {
 }
 
 #[tauri::command]
-fn export_backup(app: AppHandle) -> Result<String, String> {
+fn export_backup(app: AppHandle, features: Vec<String>) -> Result<String, String> {
+    let selected_features = selected_backup_features(&features)?;
     let connection = connect(&app)?;
     let timestamp = current_timestamp_seconds()?;
     let selected_file = rfd::FileDialog::new()
@@ -3291,24 +3438,59 @@ fn export_backup(app: AppHandle) -> Result<String, String> {
         .ok_or_else(|| "Export canceled".to_string())?;
     let snapshot = app_data_dir(&app)?.join(format!("backup-{timestamp}.sqlite"));
     connection
-        .execute("VACUUM INTO ?1", params![snapshot.to_string_lossy().to_string()])
+        .execute(
+            "VACUUM INTO ?1",
+            params![snapshot.to_string_lossy().to_string()],
+        )
         .map_err(|error| error.to_string())?;
     let snapshot_connection = Connection::open(&snapshot).map_err(|error| error.to_string())?;
+    prune_backup_database(&snapshot_connection, &selected_features)?;
     let sql_dump = create_sql_dump(&snapshot_connection)?;
     drop(snapshot_connection);
 
     let result = (|| -> Result<(), String> {
         let file = fs::File::create(&selected_file).map_err(|error| error.to_string())?;
         let mut writer = ZipWriter::new(file);
-        let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-        writer.start_file(DB_FILE_NAME, options).map_err(|error| error.to_string())?;
-        writer.write_all(&fs::read(&snapshot).map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
-        writer.start_file("life-os.sql", options).map_err(|error| error.to_string())?;
-        writer.write_all(sql_dump.as_bytes()).map_err(|error| error.to_string())?;
-        writer.start_file("README.txt", options).map_err(|error| error.to_string())?;
-        writer.write_all(b"Life OS backup\n\nlife-os.sqlite: restorable database\nlife-os.sql: readable SQL export\nimages/: coin and review images\n").map_err(|error| error.to_string())?;
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        writer
+            .start_file(DB_FILE_NAME, options)
+            .map_err(|error| error.to_string())?;
+        writer
+            .write_all(&fs::read(&snapshot).map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string())?;
+        writer
+            .start_file("life-os.sql", options)
+            .map_err(|error| error.to_string())?;
+        writer
+            .write_all(sql_dump.as_bytes())
+            .map_err(|error| error.to_string())?;
+        writer
+            .start_file("manifest.json", options)
+            .map_err(|error| error.to_string())?;
+        writer
+            .write_all(
+                serde_json::to_string_pretty(&BackupManifest {
+                    version: 1,
+                    features: features.clone(),
+                })
+                .map_err(|error| error.to_string())?
+                .as_bytes(),
+            )
+            .map_err(|error| error.to_string())?;
+        writer
+            .start_file("README.txt", options)
+            .map_err(|error| error.to_string())?;
+        writer.write_all(b"Life OS backup\n\nmanifest.json: included features\nlife-os.sqlite: restorable data\nlife-os.sql: readable SQL export\nimages/: images for included features\n").map_err(|error| error.to_string())?;
         let image_root = images_dir(&app)?;
-        add_images_to_zip(&mut writer, &image_root, &image_root)?;
+        for feature in &selected_features {
+            if let Some(image_dir) = feature.image_dir {
+                let directory = image_root.join(image_dir);
+                if directory.exists() {
+                    add_images_to_zip(&mut writer, &image_root, &directory)?;
+                }
+            }
+        }
         writer.finish().map_err(|error| error.to_string())?;
         Ok(())
     })();
@@ -3318,7 +3500,8 @@ fn export_backup(app: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn restore_backup(app: AppHandle) -> Result<String, String> {
+fn restore_backup(app: AppHandle, features: Vec<String>) -> Result<String, String> {
+    let requested_features = selected_backup_features(&features)?;
     let backup_file = rfd::FileDialog::new()
         .set_title("Import Life OS data")
         .add_filter("Life OS backup", &["zip"])
@@ -3330,39 +3513,132 @@ fn restore_backup(app: AppHandle) -> Result<String, String> {
 
     let result = (|| -> Result<(), String> {
         let file = fs::File::open(&backup_file).map_err(|error| error.to_string())?;
-        let mut archive = ZipArchive::new(file).map_err(|error| format!("Invalid backup ZIP: {error}"))?;
+        let mut archive =
+            ZipArchive::new(file).map_err(|error| format!("Invalid backup ZIP: {error}"))?;
         let mut database_found = false;
+        let mut manifest = None;
         for index in 0..archive.len() {
             let mut entry = archive.by_index(index).map_err(|error| error.to_string())?;
             let name = entry.name().replace('\\', "/");
             let destination = if name == DB_FILE_NAME {
                 database_found = true;
                 staging.join(DB_FILE_NAME)
+            } else if name == "manifest.json" {
+                let mut contents = String::new();
+                entry
+                    .read_to_string(&mut contents)
+                    .map_err(|error| error.to_string())?;
+                manifest = Some(
+                    serde_json::from_str::<BackupManifest>(&contents)
+                        .map_err(|error| format!("Invalid backup manifest: {error}"))?,
+                );
+                continue;
             } else if let Some(relative) = name.strip_prefix("images/") {
                 let safe_path = Path::new(relative);
-                if safe_path.components().any(|part| !matches!(part, std::path::Component::Normal(_))) || relative.is_empty() {
+                if safe_path
+                    .components()
+                    .any(|part| !matches!(part, std::path::Component::Normal(_)))
+                    || relative.is_empty()
+                {
                     continue;
                 }
                 staging_images.join(safe_path)
             } else {
                 continue;
             };
-            if entry.is_dir() { fs::create_dir_all(&destination).map_err(|error| error.to_string())?; continue; }
-            if let Some(parent) = destination.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
+            if entry.is_dir() {
+                fs::create_dir_all(&destination).map_err(|error| error.to_string())?;
+                continue;
+            }
+            if let Some(parent) = destination.parent() {
+                fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+            }
             let mut output = fs::File::create(destination).map_err(|error| error.to_string())?;
             std::io::copy(&mut entry, &mut output).map_err(|error| error.to_string())?;
         }
-        if !database_found { return Err(format!("Backup ZIP must contain {DB_FILE_NAME}")); }
-        let imported = Connection::open(staging.join(DB_FILE_NAME)).map_err(|error| format!("Invalid backup database: {error}"))?;
-        let integrity: String = imported.query_row("PRAGMA integrity_check", [], |row| row.get(0)).map_err(|error| error.to_string())?;
-        if integrity != "ok" { return Err(format!("Backup database failed integrity check: {integrity}")); }
+        if !database_found {
+            return Err(format!("Backup ZIP must contain {DB_FILE_NAME}"));
+        }
+        let imported = Connection::open(staging.join(DB_FILE_NAME))
+            .map_err(|error| format!("Invalid backup database: {error}"))?;
+        let integrity: String = imported
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+            .map_err(|error| error.to_string())?;
+        if integrity != "ok" {
+            return Err(format!(
+                "Backup database failed integrity check: {integrity}"
+            ));
+        }
         drop(imported);
 
-        fs::copy(staging.join(DB_FILE_NAME), db_path(&app)?).map_err(|error| error.to_string())?;
+        let selected_features = requested_features
+            .iter()
+            .copied()
+            .filter(|feature| {
+                manifest
+                    .as_ref()
+                    .map(|manifest| manifest.features.iter().any(|id| id == feature.id))
+                    .unwrap_or(true)
+            })
+            .collect::<Vec<_>>();
+        if selected_features.is_empty() {
+            return Err("None of the selected features are included in this backup".to_string());
+        }
+
+        let mut connection = connect(&app)?;
+        connection
+            .execute(
+                "ATTACH DATABASE ?1 AS imported",
+                params![staging.join(DB_FILE_NAME).to_string_lossy().to_string()],
+            )
+            .map_err(|error| error.to_string())?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
+        for feature in &selected_features {
+            if feature.includes_notes {
+                transaction
+                    .execute("DELETE FROM notes", [])
+                    .map_err(|error| error.to_string())?;
+                transaction
+                    .execute(
+                        "INSERT INTO notes (id, body) SELECT id, body FROM imported.notes",
+                        [],
+                    )
+                    .map_err(|error| error.to_string())?;
+            }
+            for feature_row in feature.feature_rows {
+                transaction
+                    .execute(
+                        "DELETE FROM features WHERE feature = ?1",
+                        params![feature_row],
+                    )
+                    .map_err(|error| error.to_string())?;
+                transaction.execute("INSERT INTO features (id, feature, data, created_at, updated_at) SELECT id, feature, data, created_at, updated_at FROM imported.features WHERE feature = ?1", params![feature_row]).map_err(|error| error.to_string())?;
+            }
+            for select_row in feature.select_rows {
+                transaction
+                    .execute("DELETE FROM selects WHERE id = ?1", params![select_row])
+                    .map_err(|error| error.to_string())?;
+                transaction.execute("INSERT INTO selects (id, options, created_at, updated_at) SELECT id, options, created_at, updated_at FROM imported.selects WHERE id = ?1", params![select_row]).map_err(|error| error.to_string())?;
+            }
+        }
+        transaction.commit().map_err(|error| error.to_string())?;
+
         let current_images = images_dir(&app)?;
-        if current_images.exists() { fs::remove_dir_all(&current_images).map_err(|error| error.to_string())?; }
-        fs::rename(&staging_images, &current_images).map_err(|error| error.to_string())?;
-        connect(&app)?;
+        for feature in &selected_features {
+            if let Some(image_dir) = feature.image_dir {
+                let current_directory = current_images.join(image_dir);
+                let imported_directory = staging_images.join(image_dir);
+                if current_directory.exists() {
+                    fs::remove_dir_all(&current_directory).map_err(|error| error.to_string())?;
+                }
+                if imported_directory.exists() {
+                    fs::rename(imported_directory, current_directory)
+                        .map_err(|error| error.to_string())?;
+                }
+            }
+        }
         Ok(())
     })();
     let _ = fs::remove_dir_all(staging);
