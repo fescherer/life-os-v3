@@ -140,12 +140,9 @@ function App() {
 
   return (
     <FileDropOverlay
-      disabled={activeFeature !== "notes"}
-      label="Drop files to create a note"
-      onDrop={(files) => {
-        setDroppedNoteFiles(files);
-        setIsNoteEntryOpen(true);
-      }}
+      disabled={activeFeature !== "notes" || !isNoteEntryOpen}
+      label="Drop files to attach to this note"
+      onDrop={setDroppedNoteFiles}
     >
       <main className="flex min-h-screen flex-col bg-background font-mono font-bold text-foreground antialiased">
         <div className="flex min-h-0 flex-1 gap-3 px-3 py-2">

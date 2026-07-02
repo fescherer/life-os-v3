@@ -13,6 +13,7 @@ type NoteListProps = {
 };
 
 function NoteList({ notes, onCopy, onEdit, onRemove }: NoteListProps) {
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [noteToRemove, setNoteToRemove] = useState<number | null>(null);
 
   if (notes.length === 0) {
@@ -25,8 +26,19 @@ function NoteList({ notes, onCopy, onEdit, onRemove }: NoteListProps) {
     <>
       <div className="grid gap-3">
         {notes.map(note => (
-          <article className="flex items-start justify-between gap-4 rounded-md border border-border bg-card p-3" key={note.id}>
-            <div className="grid min-w-0 flex-1 gap-3">
+          <article
+            className="max-h-36 cursor-pointer overflow-hidden rounded-md border border-border bg-card p-3 transition hover:bg-accent/40"
+            key={note.id}
+            onClick={(event) => {
+              if (!(event.target as HTMLElement).closest("button")) setSelectedNote(note);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") setSelectedNote(note);
+            }}
+            role="button"
+            tabIndex={0}
+          >
+            <div className="grid min-w-0 gap-3">
               {note.body && <p className="whitespace-pre-wrap text-sm text-card-foreground">{note.body}</p>}
               {note.images.length > 0 && (
                 <div className="flex flex-wrap gap-2">
@@ -48,14 +60,57 @@ function NoteList({ notes, onCopy, onEdit, onRemove }: NoteListProps) {
                 </div>
               )}
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <NoteAction label="Copy note" onClick={() => onCopy(note)}><Copy className="size-4" /></NoteAction>
-              <NoteAction label="Edit note" onClick={() => onEdit(note)}><Pencil className="size-4" /></NoteAction>
-              <NoteAction destructive label="Remove note" onClick={() => setNoteToRemove(note.id)}><Trash2 className="size-4" /></NoteAction>
-            </div>
           </article>
         ))}
       </div>
+      {selectedNote && (
+        <LifeOSModal onClose={() => setSelectedNote(null)} title="Note">
+          <div className="grid gap-3">
+            {selectedNote.body && <p className="whitespace-pre-wrap text-sm text-card-foreground">{selectedNote.body}</p>}
+            {selectedNote.images.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {selectedNote.images.map((image, index) => (
+                  <div className="group relative" key={`${selectedNote.id}-${index}`}>
+                    <img alt={`Note attachment ${index + 1}`} className="max-h-96 max-w-full rounded-md border border-border object-contain" src={image} />
+                    <AttachmentDownload className="absolute right-1 top-1 flex size-8 items-center justify-center rounded-md bg-background/90 opacity-0 transition hover:bg-accent focus:opacity-100 group-hover:opacity-100" data={image} fileName={getImageDownloadName(image, index)} label={`Download image ${index + 1}`} />
+                  </div>
+                ))}
+              </div>
+            )}
+            {selectedNote.files.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {selectedNote.files.map((file, index) => (
+                  <AttachmentDownload className="relative flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs transition hover:bg-accent" data={file.data} fileName={file.name} key={`${selectedNote.id}-${file.name}-${index}`} label={`Download ${file.name}`}>
+                    {file.name}
+                  </AttachmentDownload>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="mt-5 flex justify-end gap-2">
+            <NoteAction label="Copy note" onClick={() => onCopy(selectedNote)}><Copy className="size-4" /></NoteAction>
+            <NoteAction
+              label="Edit note"
+              onClick={() => {
+                onEdit(selectedNote);
+                setSelectedNote(null);
+              }}
+            >
+              <Pencil className="size-4" />
+            </NoteAction>
+            <NoteAction
+              destructive
+              label="Remove note"
+              onClick={() => {
+                setNoteToRemove(selectedNote.id);
+                setSelectedNote(null);
+              }}
+            >
+              <Trash2 className="size-4" />
+            </NoteAction>
+          </div>
+        </LifeOSModal>
+      )}
       {noteToRemove !== null && (
         <LifeOSModal onClose={() => setNoteToRemove(null)} title="Delete note">
           <p className="text-sm text-muted-foreground">Are you sure you want to delete this note?</p>
