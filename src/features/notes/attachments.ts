@@ -1,5 +1,10 @@
 import type { NoteFile } from "./types";
 
+export function getImageDownloadName(image: string, index: number) {
+  const fileType = image.match(/^data:image\/([^;]+)/)?.[1]?.replace("jpeg", "jpg") ?? "png";
+  return `note-image-${index + 1}.${fileType}`;
+}
+
 export function readImage(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();

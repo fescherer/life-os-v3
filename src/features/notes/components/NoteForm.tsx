@@ -1,4 +1,4 @@
-import { BadgePlus, File, ImagePlus, Paperclip, Save, X } from "lucide-react";
+import { BadgePlus, File, Paperclip, Save, X } from "lucide-react";
 import { useState } from "react";
 import { readFile, readImage } from "../attachments";
 import type { NoteFile } from "../types";
@@ -76,24 +76,6 @@ function NoteForm({ body, files, images, isEditing, onBodyChange, onCancel, onFi
           addAttachments(Array.from(event.dataTransfer.files));
         }}
       >
-        <p className="text-center text-xs text-muted-foreground">
-          Drop images or files here
-        </p>
-        <label className="flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border text-xs text-muted-foreground transition hover:bg-accent hover:text-foreground">
-          <ImagePlus aria-hidden="true" className="size-4" />
-          Paste or attach images
-          <input
-            accept="image/*"
-            className="hidden"
-            multiple
-            onChange={(event) => {
-              addImages(Array.from(event.currentTarget.files ?? []));
-              event.currentTarget.value = "";
-            }}
-            type="file"
-          />
-        </label>
-
         <label className="flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border text-xs text-muted-foreground transition hover:bg-accent hover:text-foreground">
           <Paperclip aria-hidden="true" className="size-4" />
           Attach files
@@ -101,7 +83,7 @@ function NoteForm({ body, files, images, isEditing, onBodyChange, onCancel, onFi
             className="hidden"
             multiple
             onChange={(event) => {
-              addFiles(Array.from(event.currentTarget.files ?? []));
+              addAttachments(Array.from(event.currentTarget.files ?? []));
               event.currentTarget.value = "";
             }}
             type="file"

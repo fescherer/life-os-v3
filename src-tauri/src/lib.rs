@@ -3570,6 +3570,20 @@ fn normalize_color(color: &str) -> String {
 }
 
 #[tauri::command]
+fn save_note_attachment(data: Vec<u8>, file_name: String) -> Result<Option<String>, String> {
+    let Some(selected_file) = rfd::FileDialog::new()
+        .set_title("Save note attachment")
+        .set_file_name(file_name)
+        .save_file()
+    else {
+        return Ok(None);
+    };
+
+    fs::write(&selected_file, data).map_err(|error| error.to_string())?;
+    Ok(Some(selected_file.display().to_string()))
+}
+
+#[tauri::command]
 fn export_backup(app: AppHandle, features: Vec<String>) -> Result<String, String> {
     let selected_features = selected_backup_features(&features)?;
     let connection = connect(&app)?;
@@ -3875,6 +3889,7 @@ pub fn run() {
             remove_asset,
             list_asset_registers,
             add_asset_register,
+            save_note_attachment,
             export_backup,
             restore_backup
         ])

@@ -38,7 +38,7 @@ export function FileDropOverlay({ children, disabled, label, onDrop }: FileDropO
     >
       {children}
       {isDragging && (
-        <div className="pointer-events-none fixed inset-0 z-[100] flex items-center justify-center border-2 border-dashed border-primary bg-background/90">
+        <div className="pointer-events-none fixed inset-0 z-100 flex items-center justify-center border-2 border-dashed border-primary bg-background/90">
           <div className="flex items-center gap-3 text-sm font-medium text-foreground">
             <Upload aria-hidden="true" className="size-5 text-primary" />
             {label}

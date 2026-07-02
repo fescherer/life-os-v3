@@ -1,8 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Download, NotebookPen, Trash2 } from "lucide-react";
+import { NotebookPen, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { LifeOSModal } from "../../components/life-os-ui/modal";
-import { readFile, readImage } from "./attachments";
+import { getImageDownloadName, readFile, readImage } from "./attachments";
+import AttachmentDownload from "./components/AttachmentDownload";
 import NoteForm from "./components/NoteForm";
 import NoteList from "./components/NoteList";
 import type { Note, NoteFile } from "./types";
@@ -179,17 +180,19 @@ export function NotesPanel() {
               {note.images.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {note.images.map((image, index) => (
-                    <img alt={`Note attachment ${index + 1}`} className="max-h-40 max-w-56 rounded-md border border-border object-contain" key={`${note.id}-${index}`} src={image} />
+                    <div className="group relative" key={`${note.id}-${index}`}>
+                      <img alt={`Note attachment ${index + 1}`} className="max-h-40 max-w-56 rounded-md border border-border object-contain" src={image} />
+                      <AttachmentDownload className="absolute right-1 top-1 flex size-8 items-center justify-center rounded-md bg-background/90 opacity-0 transition hover:bg-accent focus:opacity-100 group-hover:opacity-100" data={image} fileName={getImageDownloadName(image, index)} label={`Download image ${index + 1}`} />
+                    </div>
                   ))}
                 </div>
               )}
               {note.files.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {note.files.map((file, index) => (
-                    <a className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs transition hover:bg-accent" download={file.name} href={file.data} key={`${note.id}-${file.name}-${index}`}>
-                      <Download aria-hidden="true" className="size-4" />
+                    <AttachmentDownload className="relative flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs transition hover:bg-accent" data={file.data} fileName={file.name} key={`${note.id}-${file.name}-${index}`} label={`Download ${file.name}`}>
                       {file.name}
-                    </a>
+                    </AttachmentDownload>
                   ))}
                 </div>
               )}
