@@ -116,6 +116,11 @@ function FinancialFeature({
     );
   }, [entries, search]);
 
+  const descriptions = useMemo(
+    () => Array.from(new Set(entries.map(entry => entry.description.trim()).filter(Boolean))),
+    [entries],
+  );
+
   const totals = useMemo(() => {
     const income = entries
       .filter(entry => entry.type === "income")
@@ -283,7 +288,7 @@ function FinancialFeature({
                 <tbody>
                   {filteredEntries.map(entry => (
                     <tr key={entry.id}>
-                      <td className="py-2">{formatDisplayDate(entry.date)}</td>
+                      <td className="py-2" title={entry.date}>{formatDisplayDate(entry.date)}</td>
                       <td className="py-2">
                         <span className={`rounded-full px-2 py-1 text-xs ${typeStyles[entry.type]}`}>
                           {entry.type}
@@ -323,6 +328,7 @@ function FinancialFeature({
       {isEntryDialogOpen && (
         <EntryDialog
           banks={banks}
+          descriptions={descriptions}
           onClose={onCloseEntryDialog}
           onCreated={handleEntryCreated}
         />
@@ -704,6 +710,7 @@ function formatDisplayDate(value: string) {
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "short",
+    year: "numeric",
   }).format(date);
 }
 

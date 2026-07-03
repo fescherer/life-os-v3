@@ -6,13 +6,16 @@ import { BadgePlus } from "lucide-react";
 import { DatePicker } from "../../../components/ui/date-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
 import { entryTypes } from "../constants";
+import { LifeOSCombobox } from "../../../components/life-os-ui/combobox";
 
 export function EntryDialog({
   banks,
+  descriptions,
   onClose,
   onCreated,
 }: {
   banks: BankOption[];
+  descriptions: string[];
   onClose: () => void;
   onCreated: () => void | Promise<void>;
 }) {
@@ -119,9 +122,9 @@ export function EntryDialog({
 
         <label className="grid gap-3 text-sm text-muted-foreground">
           Descrição
-          <textarea
-            className="min-h-16 resize-none rounded-md border border-border bg-sidebar px-3 py-2 text-xs text-foreground outline-none"
-            onChange={event => setDescription(event.currentTarget.value)}
+          <LifeOSCombobox
+            items={descriptions}
+            onValueChange={setDescription}
             placeholder="..."
             value={description}
           />
