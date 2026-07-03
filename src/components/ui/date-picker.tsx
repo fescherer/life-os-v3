@@ -34,7 +34,7 @@ function DatePicker({
     <Popover open={open} onOpenChange={setOpen}>
       <div
         className={cn(
-          "flex h-9 w-full items-center rounded-md border border-border bg-sidebar text-xs text-foreground transition focus-within:ring-2 focus-within:ring-ring",
+          "flex h-9 w-full items-center rounded-md border border-border bg-sidebar text-xs p-2 text-foreground transition focus-within:ring-2 focus-within:ring-ring",
           !selectedDate && "text-muted-foreground",
           className,
         )}
@@ -61,7 +61,7 @@ function DatePicker({
             setIsEditing(true);
           }}
           onChange={(event) => {
-            const nextValue = event.currentTarget.value;
+            const nextValue = formatTypedDate(event.currentTarget.value);
             const nextDate = parseTypedDate(nextValue);
 
             setInputValue(nextValue);
@@ -78,10 +78,10 @@ function DatePicker({
         <PopoverTrigger asChild>
           <button
             aria-label="Abrir calendario"
-            className="flex size-9 shrink-0 items-center justify-center rounded-r-md text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex h-full items-center justify-center rounded-r-md text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             type="button"
           >
-            <CalendarIcon aria-hidden="true" className="size-4" />
+            <CalendarIcon aria-hidden="true" className="size-5" />
           </button>
         </PopoverTrigger>
       </div>
@@ -172,6 +172,17 @@ function formatDateValue(date: Date) {
 
 function formatDateLabel(date: Date) {
   return format(date, "dd/MM/yyyy");
+}
+
+function formatTypedDate(value: string) {
+  if (value.includes("-")) {
+    return value;
+  }
+
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+  const parts = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)];
+
+  return parts.filter(Boolean).join("/");
 }
 
 export { DatePicker };

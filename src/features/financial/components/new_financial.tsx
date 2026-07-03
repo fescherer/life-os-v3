@@ -2,40 +2,49 @@ import { useState } from "react";
 import { BankOption, FinancialEntryType } from "../types";
 import { invoke } from "@tauri-apps/api/core";
 import { LifeOSModal } from "../../../components/life-os-ui/modal";
-import { BadgePlus } from "lucide-react";
+import { BadgePlus, Save } from "lucide-react";
 import { LifeOSDatePicker } from "../../../components/life-os-ui/date-picker";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
 import { entryTypes } from "../constants";
 import { LifeOSCombobox } from "../../../components/life-os-ui/combobox";
+import { LifeOSFieldMoney } from "../../../components/life-os-ui/field-money";
+import { LifeOSSelect } from "../../../components/life-os-ui/select";
 
 export function EntryDialog({
   banks,
   descriptions,
+  entry,
   onClose,
-  onCreated,
+  onSaved,
 }: {
   banks: BankOption[];
   descriptions: string[];
+  entry?: {
+    bank: string;
+    date: string;
+    description: string;
+    id: string;
+    type: FinancialEntryType;
+    value: number;
+  };
   onClose: () => void;
-  onCreated: () => void | Promise<void>;
+  onSaved: () => void | Promise<void>;
 }) {
-  const [entryType, setEntryType] = useState<FinancialEntryType>("income");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [bank, setBank] = useState(() => banks[0]?.value ?? "");
-  const [value, setValue] = useState("");
-  const [description, setDescription] = useState("");
+  const isEditing = Boolean(entry);
+  const [entryType, setEntryType] = useState<FinancialEntryType>(entry?.type ?? "income");
+  const [date, setDate] = useState(() => entry?.date ?? new Date().toISOString().slice(0, 10));
+  const [bank, setBank] = useState(() => entry?.bank ?? banks[0]?.value ?? "");
+  const [value, setValue] = useState(entry?.value ?? 0);
+  const [description, setDescription] = useState(entry?.description ?? "");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   async function submitEntry() {
-    const cents = parseCurrencyToCents(value);
-
     if (!bank) {
       setError("Cadastre um banco antes de criar lançamentos.");
       return;
     }
 
-    if (cents <= 0) {
+    if (value <= 0) {
       setError("Informe um valor maior que zero.");
       return;
     }
@@ -44,16 +53,23 @@ export function EntryDialog({
     setError("");
 
     try {
-      await invoke("add_financial_entry", {
-        entry: {
-          bank,
-          date,
-          description,
-          entry_type: entryType,
-          value: cents,
-        },
-      });
-      await onCreated();
+      const financialEntry = {
+        bank,
+        date,
+        description,
+        entry_type: entryType,
+        value,
+      };
+
+      if (entry) {
+        await invoke("update_financial_entry", {
+          entry: { ...financialEntry, id: entry.id },
+        });
+      }
+      else {
+        await invoke("add_financial_entry", { entry: financialEntry });
+      }
+      await onSaved();
     }
     catch (submitError) {
       setError(String(submitError));
@@ -64,7 +80,7 @@ export function EntryDialog({
   }
 
   return (
-    <LifeOSModal onClose={onClose} title="Novo lançamento">
+    <LifeOSModal onClose={onClose} title={isEditing ? "Editar lançamento" : "Novo lançamento"}>
       <div className="mx-auto grid max-w-xl gap-7">
         <div className="grid grid-cols-3 rounded-md bg-muted p-1">
           {entryTypes.map((entry) => {
@@ -94,30 +110,18 @@ export function EntryDialog({
           </label>
           <label className="grid gap-3 text-sm text-muted-foreground">
             Banco
-            <Select onValueChange={setBank} value={bank}>
-              <SelectTrigger className="[&:hover:not(:focus-within)]:border-primary/70">
-                <SelectValue placeholder="Selecione um banco" />
-              </SelectTrigger>
-              <SelectContent>
-                {banks.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <LifeOSSelect
+              onValueChange={setBank}
+              options={banks}
+              placeholder="Selecione um banco"
+              value={bank}
+            />
           </label>
         </div>
 
         <label className="grid gap-3 text-sm text-muted-foreground">
           Valor
-          <input
-            className="h-9 rounded-md border border-border bg-sidebar px-3 text-xs text-foreground outline-none transition [&:hover:not(:focus)]:border-primary/70 [&:hover:not(:focus)]:bg-muted focus:ring-2 focus:ring-ring"
-            inputMode="decimal"
-            onChange={event => setValue(event.currentTarget.value)}
-            placeholder="R$ 4000,00"
-            value={value}
-          />
+          <LifeOSFieldMoney onValueChange={setValue} value={value} />
         </label>
 
         <label className="grid gap-3 text-sm text-muted-foreground">
@@ -142,22 +146,13 @@ export function EntryDialog({
             onClick={submitEntry}
             type="button"
           >
-            <BadgePlus aria-hidden="true" className="size-5" />
-            Adicionar lançamento
+            {isEditing
+              ? <Save aria-hidden="true" className="size-5" />
+              : <BadgePlus aria-hidden="true" className="size-5" />}
+            {isEditing ? "Salvar lançamento" : "Adicionar lançamento"}
           </button>
         </div>
       </div>
     </LifeOSModal>
   );
-}
-
-function parseCurrencyToCents(value: string) {
-  const normalized = value.replace(/\./g, "").replace(",", ".");
-  const number = Number(normalized.replace(/[^\d.]/g, ""));
-
-  if (Number.isNaN(number)) {
-    return 0;
-  }
-
-  return Math.round(number * 100);
 }

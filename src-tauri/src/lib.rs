@@ -122,6 +122,16 @@ struct FinancialEntryInput {
     description: String,
 }
 
+#[derive(Deserialize)]
+struct UpdateFinancialEntryInput {
+    id: String,
+    entry_type: String,
+    date: String,
+    bank: String,
+    value: i64,
+    description: String,
+}
+
 #[derive(Deserialize, Serialize)]
 struct FinancialEntryData {
     #[serde(rename = "type")]
@@ -1192,6 +1202,48 @@ fn add_financial_entry(app: AppHandle, entry: FinancialEntryInput) -> Result<(),
             params![format!("financial-{}", current_timestamp_id()?), data],
         )
         .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn update_financial_entry(app: AppHandle, entry: UpdateFinancialEntryInput) -> Result<(), String> {
+    validate_entry_type(&entry.entry_type)?;
+
+    if entry.value <= 0 {
+        return Err("Value must be greater than zero".to_string());
+    }
+
+    let connection = connect(&app)?;
+    let bank_options = load_bank_options(&connection)?;
+
+    if !bank_options
+        .iter()
+        .any(|option| option.value == entry.bank)
+    {
+        return Err("Selected bank does not exist".to_string());
+    }
+
+    let data = json!({
+        "type": entry.entry_type,
+        "date": entry.date,
+        "bank": entry.bank,
+        "value": entry.value,
+        "description": entry.description
+    })
+    .to_string();
+    let updated = connection
+        .execute(
+            "UPDATE features
+            SET data = ?1, updated_at = CURRENT_TIMESTAMP
+            WHERE feature = 'financial' AND id = ?2",
+            params![data, entry.id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if updated == 0 {
+        return Err("Financial entry does not exist".to_string());
+    }
 
     Ok(())
 }
@@ -3816,6 +3868,7 @@ pub fn run() {
             remove_note,
             list_financial_entries,
             add_financial_entry,
+            update_financial_entry,
             list_bank_options,
             add_bank_option,
             update_bank_option,

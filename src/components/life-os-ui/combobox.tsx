@@ -30,7 +30,11 @@ export function LifeOSCombobox({
       <Combobox
         inputValue={value}
         items={items}
-        onInputValueChange={onValueChange}
+        onInputValueChange={(inputValue, eventDetails) => {
+          if (eventDetails.reason !== "input-clear") {
+            onValueChange(inputValue);
+          }
+        }}
         openOnInputClick={false}
       >
         <ComboboxInput

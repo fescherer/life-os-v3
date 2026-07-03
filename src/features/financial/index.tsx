@@ -3,32 +3,25 @@ import {
   ArrowDown,
   ArrowUp,
   Landmark,
+  Pencil,
   Search,
   Trash2,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
 import { EntryDialog } from "./components/new_financial";
 import { BankOption, FinancialEntryType } from "./types";
+import { ChartFinancialRecords } from "./components/chart-financial-records";
 
-type ChartRange = "years" | "12-months" | "6-months" | "30-days";
+type EntryRange = "12-months" | "30-days" | "all";
 
 type FinancialEntry = {
   id: string;
@@ -50,20 +43,6 @@ type FinancialFeatureProps = {
   onCloseEntryDialog: () => void;
 };
 
-type FinancialChartPoint = {
-  expense: number;
-  income: number;
-  label: string;
-  sortKey: string;
-};
-
-const chartRangeOptions: Array<{ label: string; value: ChartRange }> = [
-  { label: "Anos", value: "years" },
-  { label: "12 meses", value: "12-months" },
-  { label: "6 meses", value: "6-months" },
-  { label: "30 dias", value: "30-days" },
-];
-
 const typeStyles: Record<FinancialEntryType, string> = {
   expense: "bg-red-300 text-primary-foreground",
   income: "bg-green-300 text-primary",
@@ -78,7 +57,8 @@ function FinancialFeature({
 }: FinancialFeatureProps) {
   const [banks, setBanks] = useState<BankOption[]>([]);
   const [entries, setEntries] = useState<FinancialEntry[]>([]);
-  const [chartRange, setChartRange] = useState<ChartRange>("12-months");
+  const [editingEntry, setEditingEntry] = useState<FinancialEntry | null>(null);
+  const [entryRange, setEntryRange] = useState<EntryRange>("30-days");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
 
@@ -101,20 +81,19 @@ function FinancialFeature({
   const filteredEntries = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
-    if (!normalizedSearch) {
-      return entries;
-    }
-
-    return entries.filter(entry =>
-      [
+    return entries.filter((entry) => {
+      const matchesDate = entryRange === "all" || isEntryInRange(entry.date, entryRange);
+      const matchesSearch = !normalizedSearch || [
         entry.description,
         entry.bank_label,
         entry.type,
         formatDisplayDate(entry.date),
         formatCurrency(entry.value),
-      ].some(value => value.toLowerCase().includes(normalizedSearch)),
-    );
-  }, [entries, search]);
+      ].some(value => value.toLowerCase().includes(normalizedSearch));
+
+      return matchesDate && matchesSearch;
+    });
+  }, [entries, entryRange, search]);
 
   const descriptions = useMemo(
     () => Array.from(new Set(entries.map(entry => entry.description.trim()).filter(Boolean))),
@@ -135,14 +114,10 @@ function FinancialFeature({
     return { expense, income, investment };
   }, [entries]);
 
-  const chartData = useMemo(
-    () => buildFinancialChartData(entries, chartRange),
-    [chartRange, entries],
-  );
-
-  async function handleEntryCreated() {
+  async function handleEntrySaved() {
     await loadFinancialData();
     onCloseEntryDialog();
+    setEditingEntry(null);
   }
 
   async function handleBanksChanged(nextBanks: BankOption[]) {
@@ -154,55 +129,7 @@ function FinancialFeature({
     <>
       <section className="grid gap-4 lg:grid-cols-5">
         <div className="grid gap-4 lg:col-span-2">
-          <section className="rounded-md border border-border bg-sidebar p-3">
-            <div className="flex items-center justify-between border-b border-border pb-3">
-              <h2 className="text-base text-foreground">Balanço do patrimônio</h2>
-              <Select onValueChange={value => setChartRange(value as ChartRange)} value={chartRange}>
-                <SelectTrigger className="h-8 w-36">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {chartRangeOptions.map(option => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="mt-4 h-52 rounded-md border border-border px-2 py-3">
-              <ResponsiveContainer height="100%" width="100%">
-                <BarChart data={chartData} margin={{ bottom: 0, left: 0, right: 8, top: 8 }}>
-                  <CartesianGrid stroke="#eee6dd" vertical={false} />
-                  <XAxis
-                    axisLine={false}
-                    dataKey="label"
-                    interval={chartRange === "30-days" ? 4 : 0}
-                    tick={{ fill: "#9b8f86", fontSize: 10 }}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    axisLine={false}
-                    tick={{ fill: "#9b8f86", fontSize: 10 }}
-                    tickFormatter={formatCompactCurrency}
-                    tickLine={false}
-                    width={48}
-                  />
-                  <Tooltip
-                    cursor={{ fill: "#eee6dd" }}
-                    formatter={(value, name) => [
-                      formatCurrency(Number(value) * 100),
-                      name === "income" ? "Income" : "Expenses",
-                    ]}
-                  />
-                  <Bar dataKey="income" fill="#86efac" name="Income" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="expense" fill="#fca5a5" name="Expenses" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </section>
+          <ChartFinancialRecords entries={entries} />
 
           <SummaryCard
             amount={totals.income}
@@ -247,7 +174,10 @@ function FinancialFeature({
           <section className="min-h-96 rounded-md border border-border bg-sidebar p-3">
             <div className="flex items-center justify-between gap-4">
               <h2 className="text-base">Lançamentos</h2>
-              <Select defaultValue="30-days">
+              <Select
+                onValueChange={value => setEntryRange(value as EntryRange)}
+                value={entryRange}
+              >
                 <SelectTrigger className="h-8 w-44">
                   <SelectValue />
                 </SelectTrigger>
@@ -255,11 +185,6 @@ function FinancialFeature({
                   <SelectItem value="30-days">Ultimos 30 dias</SelectItem>
                   <SelectItem value="12-months">Ultimos 12 meses</SelectItem>
                   <SelectItem value="all">Todos</SelectItem>
-                  {/*
-                <option>Últimos 30 dias</option>
-                <option>Últimos 12 meses</option>
-                  <SelectItem value="all">Todos</SelectItem>
-                  */}
                 </SelectContent>
               </Select>
             </div>
@@ -283,6 +208,7 @@ function FinancialFeature({
                     <th className="pb-3">Banco</th>
                     <th className="pb-3">Valor</th>
                     <th className="pb-3">Descrição</th>
+                    <th className="pb-3"><span className="sr-only">Ações</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -307,11 +233,22 @@ function FinancialFeature({
                         {formatCurrency(entry.value)}
                       </td>
                       <td className="py-2">{entry.description}</td>
+                      <td className="py-2 text-right">
+                        <button
+                          aria-label="Editar lançamento"
+                          className="inline-flex size-8 items-center justify-center rounded-md transition hover:bg-muted"
+                          onClick={() => setEditingEntry(entry)}
+                          title="Editar lançamento"
+                          type="button"
+                        >
+                          <Pencil aria-hidden="true" className="size-4" />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   {filteredEntries.length === 0 && (
                     <tr>
-                      <td className="py-8 text-center text-muted-foreground" colSpan={5}>
+                      <td className="py-8 text-center text-muted-foreground" colSpan={6}>
                         Nenhum lançamento encontrado.
                       </td>
                     </tr>
@@ -330,7 +267,17 @@ function FinancialFeature({
           banks={banks}
           descriptions={descriptions}
           onClose={onCloseEntryDialog}
-          onCreated={handleEntryCreated}
+          onSaved={handleEntrySaved}
+        />
+      )}
+
+      {editingEntry && (
+        <EntryDialog
+          banks={banks}
+          descriptions={descriptions}
+          entry={editingEntry}
+          onClose={() => setEditingEntry(null)}
+          onSaved={handleEntrySaved}
         />
       )}
 
@@ -543,149 +490,18 @@ function totalForBank(entries: FinancialEntry[], bank: string) {
     }, 0);
 }
 
-function buildFinancialChartData(entries: FinancialEntry[], range: ChartRange): FinancialChartPoint[] {
-  if (range === "years") {
-    return buildYearlyChartData(entries);
-  }
-
-  if (range === "30-days") {
-    return buildDailyChartData(entries);
-  }
-
-  return buildMonthlyChartData(entries, range === "12-months" ? 12 : 6);
-}
-
-function buildYearlyChartData(entries: FinancialEntry[]): FinancialChartPoint[] {
-  const entryYears = entries.map(entry => parseEntryDate(entry.date).getFullYear());
-  const currentYear = new Date().getFullYear();
-  const firstYear = entryYears.length > 0 ? Math.min(...entryYears) : currentYear;
-  const lastYear = Math.max(currentYear, ...entryYears);
-  const points = new Map<string, FinancialChartPoint>();
-
-  for (let year = firstYear; year <= lastYear; year += 1) {
-    const sortKey = String(year);
-
-    points.set(sortKey, {
-      expense: 0,
-      income: 0,
-      label: sortKey,
-      sortKey,
-    });
-  }
-
-  for (const entry of entries) {
-    if (entry.type !== "income" && entry.type !== "expense") {
-      continue;
-    }
-
-    const sortKey = String(parseEntryDate(entry.date).getFullYear());
-    const point = points.get(sortKey);
-
-    if (!point) {
-      continue;
-    }
-
-    point[entry.type] += entry.value / 100;
-  }
-
-  return Array.from(points.values()).sort((first, second) =>
-    first.sortKey.localeCompare(second.sortKey),
-  );
-}
-
-function buildMonthlyChartData(entries: FinancialEntry[], monthCount: number): FinancialChartPoint[] {
+function isEntryInRange(value: string, range: Exclude<EntryRange, "all">) {
+  const entryDate = parseEntryDate(value);
   const today = new Date();
-  const firstMonth = new Date(today.getFullYear(), today.getMonth() - monthCount + 1, 1);
-  const points = new Map<string, FinancialChartPoint>();
+  const firstDate = range === "30-days"
+    ? new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29)
+    : new Date(today.getFullYear(), today.getMonth() - 11, 1);
 
-  for (let index = 0; index < monthCount; index += 1) {
-    const date = new Date(firstMonth.getFullYear(), firstMonth.getMonth() + index, 1);
-    const sortKey = formatMonthKey(date);
-
-    points.set(sortKey, {
-      expense: 0,
-      income: 0,
-      label: new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(date),
-      sortKey,
-    });
-  }
-
-  for (const entry of entries) {
-    if (entry.type !== "income" && entry.type !== "expense") {
-      continue;
-    }
-
-    const date = parseEntryDate(entry.date);
-    const sortKey = formatMonthKey(date);
-    const point = points.get(sortKey);
-
-    if (!point) {
-      continue;
-    }
-
-    point[entry.type] += entry.value / 100;
-  }
-
-  return Array.from(points.values()).sort((first, second) =>
-    first.sortKey.localeCompare(second.sortKey),
-  );
-}
-
-function buildDailyChartData(entries: FinancialEntry[]): FinancialChartPoint[] {
-  const today = new Date();
-  const firstDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29);
-  const points = new Map<string, FinancialChartPoint>();
-
-  for (let index = 0; index < 30; index += 1) {
-    const date = new Date(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate() + index);
-    const sortKey = formatDayKey(date);
-
-    points.set(sortKey, {
-      expense: 0,
-      income: 0,
-      label: new Intl.DateTimeFormat("pt-BR", {
-        day: "2-digit",
-        month: "2-digit",
-      }).format(date),
-      sortKey,
-    });
-  }
-
-  for (const entry of entries) {
-    if (entry.type !== "income" && entry.type !== "expense") {
-      continue;
-    }
-
-    const date = parseEntryDate(entry.date);
-    const sortKey = formatDayKey(date);
-    const point = points.get(sortKey);
-
-    if (!point) {
-      continue;
-    }
-
-    point[entry.type] += entry.value / 100;
-  }
-
-  return Array.from(points.values()).sort((first, second) =>
-    first.sortKey.localeCompare(second.sortKey),
-  );
+  return entryDate >= firstDate && entryDate <= today;
 }
 
 function parseEntryDate(value: string) {
   return new Date(`${value}T00:00:00`);
-}
-
-function formatMonthKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function formatDayKey(date: Date) {
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
 }
 
 function formatCurrency(cents: number) {
@@ -693,15 +509,6 @@ function formatCurrency(cents: number) {
     currency: "BRL",
     style: "currency",
   }).format(cents / 100);
-}
-
-function formatCompactCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    compactDisplay: "short",
-    currency: "BRL",
-    notation: "compact",
-    style: "currency",
-  }).format(value);
 }
 
 function formatDisplayDate(value: string) {
