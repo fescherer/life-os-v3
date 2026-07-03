@@ -10,6 +10,7 @@ import {
 import { cn } from "../../lib/utils";
 
 type DatePickerProps = {
+  className?: string;
   id?: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -17,6 +18,7 @@ type DatePickerProps = {
 };
 
 function DatePicker({
+  className,
   id,
   onChange,
   placeholder = "Selecionar data",
@@ -34,6 +36,7 @@ function DatePicker({
         className={cn(
           "flex h-9 w-full items-center rounded-md border border-border bg-sidebar text-xs text-foreground transition focus-within:ring-2 focus-within:ring-ring",
           !selectedDate && "text-muted-foreground",
+          className,
         )}
       >
         <input

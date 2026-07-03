@@ -31,11 +31,13 @@ export function LifeOSCombobox({
         inputValue={value}
         items={items}
         onInputValueChange={onValueChange}
+        openOnInputClick={false}
       >
         <ComboboxInput
-          className="h-9 w-full rounded-md border border-border bg-sidebar dark:bg-sidebar"
+          className="h-9 w-full rounded-md border border-border bg-sidebar transition [&:hover:not(:focus-within)]:border-primary/70 [&:hover:not(:focus-within)]:bg-muted focus-within:ring-2 focus-within:ring-ring dark:bg-sidebar"
           placeholder={placeholder}
           showClear
+          showFocusRing={false}
         />
         <ComboboxContent
           className="rounded-md border border-border shadow-lg ring-0 data-empty:hidden"

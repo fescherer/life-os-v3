@@ -3,7 +3,7 @@ import { BankOption, FinancialEntryType } from "../types";
 import { invoke } from "@tauri-apps/api/core";
 import { LifeOSModal } from "../../../components/life-os-ui/modal";
 import { BadgePlus } from "lucide-react";
-import { DatePicker } from "../../../components/ui/date-picker";
+import { LifeOSDatePicker } from "../../../components/life-os-ui/date-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
 import { entryTypes } from "../constants";
 import { LifeOSCombobox } from "../../../components/life-os-ui/combobox";
@@ -90,12 +90,12 @@ export function EntryDialog({
         <div className="grid gap-6 md:grid-cols-2">
           <label className="grid gap-3 text-sm text-muted-foreground">
             Data
-            <DatePicker onChange={setDate} value={date} />
+            <LifeOSDatePicker onChange={setDate} value={date} />
           </label>
           <label className="grid gap-3 text-sm text-muted-foreground">
             Banco
             <Select onValueChange={setBank} value={bank}>
-              <SelectTrigger>
+              <SelectTrigger className="[&:hover:not(:focus-within)]:border-primary/70">
                 <SelectValue placeholder="Selecione um banco" />
               </SelectTrigger>
               <SelectContent>
@@ -112,7 +112,7 @@ export function EntryDialog({
         <label className="grid gap-3 text-sm text-muted-foreground">
           Valor
           <input
-            className="h-9 rounded-md border border-border bg-sidebar px-3 text-xs text-foreground outline-none"
+            className="h-9 rounded-md border border-border bg-sidebar px-3 text-xs text-foreground outline-none transition [&:hover:not(:focus)]:border-primary/70 [&:hover:not(:focus)]:bg-muted focus:ring-2 focus:ring-ring"
             inputMode="decimal"
             onChange={event => setValue(event.currentTarget.value)}
             placeholder="R$ 4000,00"
