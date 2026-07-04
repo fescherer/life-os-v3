@@ -123,6 +123,14 @@ struct FinancialEntryInput {
 }
 
 #[derive(Deserialize)]
+struct FinancialTransferInput {
+    date: String,
+    from_bank: String,
+    to_bank: String,
+    value: i64,
+}
+
+#[derive(Deserialize)]
 struct UpdateFinancialEntryInput {
     id: String,
     entry_type: String,
@@ -1202,6 +1210,66 @@ fn add_financial_entry(app: AppHandle, entry: FinancialEntryInput) -> Result<(),
             params![format!("financial-{}", current_timestamp_id()?), data],
         )
         .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn add_financial_transfer(app: AppHandle, transfer: FinancialTransferInput) -> Result<(), String> {
+    if transfer.value <= 0 {
+        return Err("Value must be greater than zero".to_string());
+    }
+
+    if transfer.from_bank == transfer.to_bank {
+        return Err("Transfer banks must be different".to_string());
+    }
+
+    let mut connection = connect(&app)?;
+    let bank_options = load_bank_options(&connection)?;
+    let from_bank = bank_options
+        .iter()
+        .find(|option| option.value == transfer.from_bank)
+        .ok_or_else(|| "Selected source bank does not exist".to_string())?;
+    let to_bank = bank_options
+        .iter()
+        .find(|option| option.value == transfer.to_bank)
+        .ok_or_else(|| "Selected destination bank does not exist".to_string())?;
+    let description = format!(
+        "Transferência de banco {} para banco {}",
+        from_bank.label, to_bank.label
+    );
+    let outgoing_data = json!({
+        "type": "transfer",
+        "date": transfer.date,
+        "bank": transfer.from_bank,
+        "value": -transfer.value,
+        "description": description
+    })
+    .to_string();
+    let incoming_data = json!({
+        "type": "transfer",
+        "date": transfer.date,
+        "bank": transfer.to_bank,
+        "value": transfer.value,
+        "description": description
+    })
+    .to_string();
+    let transfer_id = current_timestamp_id()?;
+    let transaction = connection.transaction().map_err(|error| error.to_string())?;
+
+    transaction
+        .execute(
+            "INSERT INTO features (id, feature, data) VALUES (?1, 'financial', ?2)",
+            params![format!("financial-{transfer_id}-out"), outgoing_data],
+        )
+        .map_err(|error| error.to_string())?;
+    transaction
+        .execute(
+            "INSERT INTO features (id, feature, data) VALUES (?1, 'financial', ?2)",
+            params![format!("financial-{transfer_id}-in"), incoming_data],
+        )
+        .map_err(|error| error.to_string())?;
+    transaction.commit().map_err(|error| error.to_string())?;
 
     Ok(())
 }
@@ -2827,7 +2895,7 @@ fn remove_packaging_item(app: AppHandle, id: String) -> Result<(), String> {
 
 fn validate_entry_type(entry_type: &str) -> Result<(), String> {
     match entry_type {
-        "income" | "expense" | "investment" => Ok(()),
+        "income" | "expense" | "investment" | "transfer" => Ok(()),
         _ => Err("Invalid financial entry type".to_string()),
     }
 }
@@ -3868,6 +3936,7 @@ pub fn run() {
             remove_note,
             list_financial_entries,
             add_financial_entry,
+            add_financial_transfer,
             update_financial_entry,
             list_bank_options,
             add_bank_option,

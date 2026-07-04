@@ -1,5 +1,6 @@
 import {
   Archive,
+  ArrowRightLeft,
   BadgePlus,
   Bell,
   Box,
@@ -126,6 +127,7 @@ function App() {
   const [isCoinEntryOpen, setIsCoinEntryOpen] = useState(false);
   const [isFinancialDataOpen, setIsFinancialDataOpen] = useState(false);
   const [isFinancialEntryOpen, setIsFinancialEntryOpen] = useState(false);
+  const [isFinancialTransferOpen, setIsFinancialTransferOpen] = useState(false);
   const [isHabitEntryOpen, setIsHabitEntryOpen] = useState(false);
   const [isNoteEntryOpen, setIsNoteEntryOpen] = useState(false);
   const [droppedNoteFiles, setDroppedNoteFiles] = useState<File[]>([]);
@@ -237,6 +239,16 @@ function App() {
                     <Download aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
                     Gerenciar dados
                   </button>
+                  {activeFeature === "financial" && (
+                    <button
+                      className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-secondary px-4 text-sm text-secondary-foreground shadow-sm transition hover:bg-accent"
+                      onClick={() => setIsFinancialTransferOpen(true)}
+                      type="button"
+                    >
+                      <ArrowRightLeft aria-hidden="true" className="size-5 shrink-0" strokeWidth={2} />
+                      Nova transferência
+                    </button>
+                  )}
                   <button
                     className="flex h-10 min-w-52 items-center justify-center gap-4 rounded-md border border-primary bg-primary px-4 text-sm text-primary-foreground shadow-sm transition hover:bg-primary/90"
                     onClick={() => {
@@ -332,8 +344,10 @@ function App() {
                 <FinancialFeature
                   isDataDialogOpen={isFinancialDataOpen}
                   isEntryDialogOpen={isFinancialEntryOpen}
+                  isTransferDialogOpen={isFinancialTransferOpen}
                   onCloseDataDialog={() => setIsFinancialDataOpen(false)}
                   onCloseEntryDialog={() => setIsFinancialEntryOpen(false)}
+                  onCloseTransferDialog={() => setIsFinancialTransferOpen(false)}
                 />
               )}
               {activeFeature === "habits" && (

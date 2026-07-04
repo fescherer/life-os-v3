@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import { EntryDialog } from "./components/new_financial";
+import { TransferDialog } from "./components/new_transfer";
 import { BankOption, FinancialEntryType } from "./types";
 import { ChartFinancialRecords } from "./components/chart-financial-records";
 import { SummaryCards } from "./components/summary-cards";
@@ -37,21 +38,26 @@ type FinancialEntry = {
 type FinancialFeatureProps = {
   isDataDialogOpen: boolean;
   isEntryDialogOpen: boolean;
+  isTransferDialogOpen: boolean;
   onCloseDataDialog: () => void;
   onCloseEntryDialog: () => void;
+  onCloseTransferDialog: () => void;
 };
 
 const typeStyles: Record<FinancialEntryType, string> = {
   expense: "bg-red-300 text-primary-foreground",
   income: "bg-green-300 text-primary",
   investment: "bg-blue-300 text-primary",
+  transfer: "bg-violet-300 text-primary",
 };
 
 function FinancialFeature({
   isDataDialogOpen,
   isEntryDialogOpen,
+  isTransferDialogOpen,
   onCloseDataDialog,
   onCloseEntryDialog,
+  onCloseTransferDialog,
 }: FinancialFeatureProps) {
   const [banks, setBanks] = useState<BankOption[]>([]);
   const [entries, setEntries] = useState<FinancialEntry[]>([]);
@@ -102,6 +108,11 @@ function FinancialFeature({
     await loadFinancialData();
     onCloseEntryDialog();
     setEditingEntry(null);
+  }
+
+  async function handleTransferSaved() {
+    await loadFinancialData();
+    onCloseTransferDialog();
   }
 
   async function handleBanksChanged(nextBanks: BankOption[]) {
@@ -178,7 +189,10 @@ function FinancialFeature({
                 </thead>
                 <tbody>
                   {filteredEntries.map(entry => (
-                    <tr key={entry.id}>
+                    <tr
+                      className="[&>td]:px-2 [&>td]:transition [&>td:first-child]:rounded-l-md [&>td:last-child]:rounded-r-md hover:[&>td]:bg-accent"
+                      key={entry.id}
+                    >
                       <td className="py-2" title={entry.date}>{formatDisplayDate(entry.date)}</td>
                       <td className="py-2">
                         <span className={`rounded-full px-2 py-1 text-xs ${typeStyles[entry.type]}`}>
@@ -201,7 +215,9 @@ function FinancialFeature({
                       <td className="py-2 text-right">
                         <button
                           aria-label="Editar lançamento"
-                          className="inline-flex size-8 items-center justify-center rounded-md transition hover:bg-muted"
+                          className={entry.type === "transfer"
+                            ? "hidden"
+                            : "inline-flex size-8 items-center justify-center rounded-md transition hover:bg-muted"}
                           onClick={() => setEditingEntry(entry)}
                           title="Editar lançamento"
                           type="button"
@@ -243,6 +259,14 @@ function FinancialFeature({
           entry={editingEntry}
           onClose={() => setEditingEntry(null)}
           onSaved={handleEntrySaved}
+        />
+      )}
+
+      {isTransferDialogOpen && (
+        <TransferDialog
+          banks={banks}
+          onClose={onCloseTransferDialog}
+          onSaved={handleTransferSaved}
         />
       )}
 
