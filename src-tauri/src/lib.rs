@@ -229,6 +229,17 @@ struct AssetRegisterInput {
     asset: String,
 }
 
+#[derive(Deserialize)]
+struct UpdateAssetRegisterInput {
+    id: String,
+    register_type: String,
+    date: String,
+    bank: String,
+    quantity: f64,
+    price: i64,
+    asset: String,
+}
+
 #[derive(Deserialize, Serialize)]
 struct AssetRegisterData {
     #[serde(rename = "type")]
@@ -1859,6 +1870,69 @@ fn add_asset_register(app: AppHandle, register: AssetRegisterInput) -> Result<()
         .execute(
             "INSERT INTO features (id, feature, data) VALUES (?1, 'assets_register', ?2)",
             params![format!("assets-register-{}", current_timestamp_id()?), data],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn update_asset_register(app: AppHandle, register: UpdateAssetRegisterInput) -> Result<(), String> {
+    validate_asset_register_type(&register.register_type)?;
+
+    if register.quantity <= 0.0 {
+        return Err("Quantity must be greater than zero".to_string());
+    }
+
+    if register.price <= 0 {
+        return Err("Price must be greater than zero".to_string());
+    }
+
+    let connection = connect(&app)?;
+    let banks = load_select_options(&connection, "asset_banks")?;
+    let assets = load_assets(&connection)?;
+
+    if !banks.iter().any(|option| option.value == register.bank) {
+        return Err("Selected bank does not exist".to_string());
+    }
+
+    if !assets.iter().any(|asset| asset.id == register.asset) {
+        return Err("Selected asset does not exist".to_string());
+    }
+
+    let data = json!({
+        "type": register.register_type,
+        "date": register.date,
+        "bank": register.bank,
+        "quantity": register.quantity,
+        "price": register.price,
+        "asset": register.asset
+    })
+    .to_string();
+    let updated = connection
+        .execute(
+            "UPDATE features
+            SET data = ?1, updated_at = CURRENT_TIMESTAMP
+            WHERE feature = 'assets_register' AND id = ?2",
+            params![data, register.id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if updated == 0 {
+        return Err("Asset launch does not exist".to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_asset_register(app: AppHandle, id: String) -> Result<(), String> {
+    let connection = connect(&app)?;
+
+    connection
+        .execute(
+            "DELETE FROM features WHERE feature = 'assets_register' AND id = ?1",
+            params![id],
         )
         .map_err(|error| error.to_string())?;
 
@@ -4011,6 +4085,8 @@ pub fn run() {
             remove_asset,
             list_asset_registers,
             add_asset_register,
+            update_asset_register,
+            remove_asset_register,
             save_note_attachment,
             export_backup,
             restore_backup

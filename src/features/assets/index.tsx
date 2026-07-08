@@ -156,6 +156,8 @@ function AssetsFeature({
   const [registerSearch, setRegisterSearch] = useState("");
   const [assetTypeFilter, setAssetTypeFilter] = useState("all");
   const [chartRange, setChartRange] = useState<AssetChartRange>("12-months");
+  const [editingRegister, setEditingRegister] = useState<AssetRegister | null>(null);
+  const [isAssetManagerOpen, setIsAssetManagerOpen] = useState(false);
   const [status, setStatus] = useState("");
 
   async function loadAssetsData() {
@@ -247,6 +249,17 @@ function AssetsFeature({
   async function handleEntryCreated() {
     await loadAssetsData();
     onCloseEntryDialog();
+  }
+
+  async function removeRegister(id: string) {
+    try {
+      await invoke("remove_asset_register", { id });
+      await loadAssetsData();
+      setStatus("");
+    }
+    catch (error) {
+      setStatus(String(error));
+    }
   }
 
   return (
@@ -409,6 +422,7 @@ function AssetsFeature({
                     <th className="pb-3">UnitÃ¡rio</th>
                     <th className="pb-3">Total</th>
                     <th className="pb-3">Ativo</th>
+                    <th className="pb-3 text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -435,11 +449,29 @@ function AssetsFeature({
                           {register.asset_ticker}
                         </span>
                       </td>
+                      <td className="py-2">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            className="flex h-8 items-center justify-center rounded-md border border-border px-2"
+                            onClick={() => setEditingRegister(register)}
+                            type="button"
+                          >
+                            <Pencil aria-hidden="true" className="size-4" />
+                          </button>
+                          <button
+                            className="flex h-8 items-center justify-center rounded-md border border-border px-2 text-destructive"
+                            onClick={() => removeRegister(register.id)}
+                            type="button"
+                          >
+                            <Trash2 aria-hidden="true" className="size-4" />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                   {filteredRegisters.length === 0 && (
                     <tr>
-                      <td className="py-8 text-center text-muted-foreground" colSpan={7}>
+                      <td className="py-8 text-center text-muted-foreground" colSpan={8}>
                         Nenhum lanÃ§amento encontrado.
                       </td>
                     </tr>
@@ -453,21 +485,31 @@ function AssetsFeature({
         <section className="min-h-168 rounded-md border border-border bg-sidebar p-3 xl:col-span-6">
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-base">Ativos</h2>
-            <Select onValueChange={setAssetTypeFilter} value={assetTypeFilter}>
-              <SelectTrigger className="h-8 w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os ativos</SelectItem>
-                <SelectGroup>
-                  {types.map(type => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2">
+              <Select onValueChange={setAssetTypeFilter} value={assetTypeFilter}>
+                <SelectTrigger className="h-8 w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os ativos</SelectItem>
+                  <SelectGroup>
+                    {types.map(type => (
+                      <SelectItem key={type.value} value={type.value}>
+                        {type.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <button
+                className="flex h-8 items-center justify-center gap-2 rounded-md border border-border px-3 text-xs transition hover:bg-accent"
+                onClick={() => setIsAssetManagerOpen(true)}
+                type="button"
+              >
+                <PlusCircle aria-hidden="true" className="size-4" />
+                Novo ativo
+              </button>
+            </div>
           </div>
 
           <label className="mt-4 flex h-8 items-center gap-2 rounded-md border border-border px-2 text-muted-foreground">
@@ -534,6 +576,25 @@ function AssetsFeature({
         />
       )}
 
+      {editingRegister && (
+        <EntryDialog
+          assets={assets}
+          banks={banks}
+          initialRegister={editingRegister}
+          onClose={() => setEditingRegister(null)}
+          onCreated={async () => {
+            setEditingRegister(null);
+            await loadAssetsData();
+          }}
+        />
+      )}
+
+      {isAssetManagerOpen && (
+        <Modal onClose={() => setIsAssetManagerOpen(false)} title="Gerenciar dados- Assets">
+          <AssetManager assets={assets} onChanged={handleChanged} types={types} />
+        </Modal>
+      )}
+
       {isDataDialogOpen && (
         <DataDialog
           assets={assets}
@@ -559,20 +620,22 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
 function EntryDialog({
   assets,
   banks,
+  initialRegister,
   onClose,
   onCreated,
 }: {
   assets: Asset[];
   banks: SelectOption[];
+  initialRegister?: AssetRegister;
   onClose: () => void;
   onCreated: () => void | Promise<void>;
 }) {
-  const [registerType, setRegisterType] = useState<AssetRegisterType>("dividend");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [asset, setAsset] = useState(() => assets[0]?.id ?? "");
-  const [bank, setBank] = useState(() => banks[0]?.value ?? "");
-  const [quantity, setQuantity] = useState("1");
-  const [price, setPrice] = useState("");
+  const [registerType, setRegisterType] = useState<AssetRegisterType>(() => initialRegister?.type ?? "dividend");
+  const [date, setDate] = useState(() => initialRegister?.date ?? new Date().toISOString().slice(0, 10));
+  const [asset, setAsset] = useState(() => initialRegister?.asset ?? assets[0]?.id ?? "");
+  const [bank, setBank] = useState(() => initialRegister?.bank ?? banks[0]?.value ?? "");
+  const [quantity, setQuantity] = useState(() => initialRegister ? String(initialRegister.quantity) : "1");
+  const [price, setPrice] = useState(() => initialRegister ? formatCurrency(initialRegister.price) : "");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const total = parseCurrencyToCents(price) * parseQuantity(quantity);
@@ -605,16 +668,23 @@ function EntryDialog({
     setError("");
 
     try {
-      await invoke("add_asset_register", {
-        register: {
-          asset,
-          bank,
-          date,
-          price: priceInCents,
-          quantity: parsedQuantity,
-          register_type: registerType,
-        },
-      });
+      const register = {
+        asset,
+        bank,
+        date,
+        price: priceInCents,
+        quantity: parsedQuantity,
+        register_type: registerType,
+      };
+
+      if (initialRegister) {
+        await invoke("update_asset_register", {
+          register: { ...register, id: initialRegister.id },
+        });
+      }
+      else {
+        await invoke("add_asset_register", { register });
+      }
       await onCreated();
     }
     catch (submitError) {
@@ -626,7 +696,7 @@ function EntryDialog({
   }
 
   return (
-    <Modal onClose={onClose} title="Novo lanÃ§amento">
+    <Modal onClose={onClose} title={initialRegister ? "Editar lançamento" : "Novo lançamento"}>
       <div className="mx-auto grid max-w-xl gap-7">
         <div className="grid grid-cols-3 rounded-md bg-muted p-1">
           {registerTypes.map((type) => {
@@ -729,7 +799,7 @@ function EntryDialog({
             type="button"
           >
             <BadgePlus aria-hidden="true" className="size-5" />
-            Adicionar lanÃ§amento
+            {initialRegister ? "Salvar lançamento" : "Adicionar lançamento"}
           </button>
         </div>
       </div>
