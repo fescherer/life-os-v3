@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowRightLeft } from "lucide-react";
+import { ArrowRightLeft, Save } from "lucide-react";
 import { useState } from "react";
 
 import { LifeOSDatePicker } from "../../../components/life-os-ui/date-picker";
@@ -12,15 +12,24 @@ export function TransferDialog({
   banks,
   onClose,
   onSaved,
+  transfer,
 }: {
   banks: BankOption[];
   onClose: () => void;
   onSaved: () => void | Promise<void>;
+  transfer?: {
+    date: string;
+    from_bank: string;
+    id: string;
+    to_bank: string;
+    value: number;
+  };
 }) {
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [fromBank, setFromBank] = useState(() => banks[0]?.value ?? "");
-  const [toBank, setToBank] = useState(() => banks[1]?.value ?? "");
-  const [value, setValue] = useState(0);
+  const isEditing = Boolean(transfer);
+  const [date, setDate] = useState(() => transfer?.date ?? new Date().toISOString().slice(0, 10));
+  const [fromBank, setFromBank] = useState(() => transfer?.from_bank ?? banks[0]?.value ?? "");
+  const [toBank, setToBank] = useState(() => transfer?.to_bank ?? banks[1]?.value ?? "");
+  const [value, setValue] = useState(transfer?.value ?? 0);
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -44,9 +53,16 @@ export function TransferDialog({
     setError("");
 
     try {
-      await invoke("add_financial_transfer", {
-        transfer: { date, from_bank: fromBank, to_bank: toBank, value },
-      });
+      if (transfer) {
+        await invoke("update_financial_transfer", {
+          transfer: { date, from_bank: fromBank, id: transfer.id, to_bank: toBank, value },
+        });
+      }
+      else {
+        await invoke("add_financial_transfer", {
+          transfer: { date, from_bank: fromBank, to_bank: toBank, value },
+        });
+      }
       await onSaved();
     }
     catch (submitError) {
@@ -58,7 +74,7 @@ export function TransferDialog({
   }
 
   return (
-    <LifeOSModal onClose={onClose} title="Nova transferência">
+    <LifeOSModal onClose={onClose} title={isEditing ? "Editar transferência" : "Nova transferência"}>
       <div className="mx-auto grid max-w-xl gap-7">
         <label className="grid gap-3 text-sm text-muted-foreground">
           Data
@@ -103,8 +119,10 @@ export function TransferDialog({
             onClick={submitTransfer}
             type="button"
           >
-            <ArrowRightLeft aria-hidden="true" className="size-5" />
-            Adicionar transferência
+            {isEditing
+              ? <Save aria-hidden="true" className="size-5" />
+              : <ArrowRightLeft aria-hidden="true" className="size-5" />}
+            {isEditing ? "Salvar transferência" : "Adicionar transferência"}
           </button>
         </div>
       </div>

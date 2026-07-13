@@ -44,11 +44,33 @@ type FinancialFeatureProps = {
   onCloseTransferDialog: () => void;
 };
 
-const typeStyles: Record<FinancialEntryType, string> = {
-  expense: "bg-red-300 text-primary-foreground",
-  income: "bg-green-300 text-primary",
-  investment: "bg-blue-300 text-primary",
-  transfer: "bg-violet-300 text-primary",
+type FinancialTransferDraft = {
+  date: string;
+  from_bank: string;
+  id: string;
+  to_bank: string;
+  value: number;
+};
+
+const entryRowStyles: Record<FinancialEntryType, string> = {
+  expense: "[&>td]:bg-red-300/10 hover:[&>td]:bg-red-300/20",
+  income: "[&>td]:bg-green-300/10 hover:[&>td]:bg-green-300/20",
+  investment: "[&>td]:bg-blue-300/12 hover:[&>td]:bg-blue-300/22",
+  transfer: "[&>td]:bg-purple-300/12 hover:[&>td]:bg-purple-300/22",
+};
+
+const entryTypeDotStyles: Record<FinancialEntryType, string> = {
+  expense: "bg-red-500",
+  income: "bg-green-500",
+  investment: "bg-blue-500",
+  transfer: "bg-purple-500",
+};
+
+const entryValueStyles: Record<FinancialEntryType, string> = {
+  expense: "text-red-600",
+  income: "text-green-600",
+  investment: "text-blue-600",
+  transfer: "text-purple-600",
 };
 
 function FinancialFeature({
@@ -62,6 +84,7 @@ function FinancialFeature({
   const [banks, setBanks] = useState<BankOption[]>([]);
   const [entries, setEntries] = useState<FinancialEntry[]>([]);
   const [editingEntry, setEditingEntry] = useState<FinancialEntry | null>(null);
+  const [editingTransfer, setEditingTransfer] = useState<FinancialTransferDraft | null>(null);
   const [entryRange, setEntryRange] = useState<EntryRange>("30-days");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -113,6 +136,7 @@ function FinancialFeature({
   async function handleTransferSaved() {
     await loadFinancialData();
     onCloseTransferDialog();
+    setEditingTransfer(null);
   }
 
   async function handleBanksChanged(nextBanks: BankOption[]) {
@@ -120,34 +144,67 @@ function FinancialFeature({
     await loadFinancialData();
   }
 
+  async function removeEntry(entry: FinancialEntry) {
+    try {
+      if (entry.type === "transfer") {
+        await invoke("remove_financial_transfer", { id: entry.id });
+      }
+      else {
+        await invoke("remove_financial_entry", { id: entry.id });
+      }
+      await loadFinancialData();
+      setStatus("");
+    }
+    catch (removeError) {
+      setStatus(String(removeError));
+    }
+  }
+
+  function editTransfer(entry: FinancialEntry) {
+    const transfer = buildTransferDraft(entries, entry);
+
+    if (!transfer) {
+      setStatus("Transferência não encontrada.");
+      return;
+    }
+
+    setEditingTransfer(transfer);
+  }
+
   return (
     <>
-      <section className="grid gap-4 lg:grid-cols-5">
-        <div className="grid gap-4 lg:col-span-2">
+      <section className="grid h-[calc(100vh-8.5rem)] min-h-0 gap-4 overflow-hidden lg:grid-cols-5">
+        <div className="grid min-h-0 gap-4 overflow-y-auto pr-1 lg:col-span-2">
           <ChartFinancialRecords entries={entries} />
           <SummaryCards entries={entries} />
         </div>
 
-        <div className="grid content-start gap-4 lg:col-span-3">
+        <div className="grid min-h-0 gap-4 lg:col-span-3 lg:grid-rows-[auto_minmax(0,1fr)]">
           <div className="flex gap-4 overflow-hidden">
-            {banks.map(bank => (
-              <article
-                className="min-w-44 rounded-md border border-border bg-sidebar p-2"
-                key={bank.value}
-              >
-                <strong className="block text-xl leading-none" style={{ color: bank.color }}>
-                  {bank.label}
-                </strong>
-                <p className="mt-2 text-sm">{formatCurrency(totalForBank(entries, bank.value))}</p>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-center text-xs">
-                  <span className="rounded bg-muted px-3 py-2">+ 12%</span>
-                  <span className="rounded bg-muted px-3 py-2">+ 2%</span>
-                </div>
-              </article>
-            ))}
+            {banks.map((bank) => {
+              const bankTotal = totalForBank(entries, bank.value);
+              const monthPercent = periodPercentForBank(entries, bank.value, "month", bankTotal);
+              const yearPercent = periodPercentForBank(entries, bank.value, "year", bankTotal);
+
+              return (
+                <article
+                  className="min-w-48 rounded-md border border-border bg-sidebar p-3"
+                  key={bank.value}
+                >
+                  <strong className="block text-xl leading-none" style={{ color: bank.color }}>
+                    {bank.label}
+                  </strong>
+                  <p className="mt-2 text-sm">{formatCurrency(bankTotal)}</p>
+                  <div className="mt-3 grid grid-cols-2 gap-1.5 border-t border-border/70 pt-2">
+                    <BankPeriodStat label="Mês atual" prefix="M" value={monthPercent} />
+                    <BankPeriodStat label="Últimos 12 meses" prefix="Y" value={yearPercent} />
+                  </div>
+                </article>
+              );
+            })}
           </div>
 
-          <section className="min-h-96 rounded-md border border-border bg-sidebar p-3">
+          <section className="flex min-h-0 flex-col rounded-md border border-border bg-sidebar p-3">
             <div className="flex items-center justify-between gap-4">
               <h2 className="text-base">Lançamentos</h2>
               <Select
@@ -175,12 +232,12 @@ function FinancialFeature({
               />
             </label>
 
-            <div className="mt-6 overflow-x-auto border-t border-border pt-5">
+            <div className="mt-6 min-h-0 flex-1 overflow-auto border-t border-border pt-5">
               <table className="w-full min-w-xl text-left text-xs">
-                <thead className="text-sm text-muted-foreground">
+                <thead className="sticky top-0 z-10 bg-sidebar text-sm text-muted-foreground">
                   <tr>
+                    <th className="w-8 pb-3"><span className="sr-only">Tipo</span></th>
                     <th className="pb-3">Data</th>
-                    <th className="pb-3">Tipo</th>
                     <th className="pb-3">Banco</th>
                     <th className="pb-3">Valor</th>
                     <th className="pb-3">Descrição</th>
@@ -188,45 +245,65 @@ function FinancialFeature({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredEntries.map(entry => (
-                    <tr
-                      className="[&>td]:px-2 [&>td]:transition [&>td:first-child]:rounded-l-md [&>td:last-child]:rounded-r-md hover:[&>td]:bg-accent"
-                      key={entry.id}
-                    >
-                      <td className="py-2" title={entry.date}>{formatDisplayDate(entry.date)}</td>
-                      <td className="py-2">
-                        <span className={`rounded-full px-2 py-1 text-xs ${typeStyles[entry.type]}`}>
-                          {entry.type}
-                        </span>
-                      </td>
-                      <td className="py-2">
-                        <span
-                          className="rounded-full px-2 py-1 text-xs text-primary-foreground"
-                          style={{ backgroundColor: entry.bank_color }}
-                        >
+                  {filteredEntries.map((entry) => {
+                    const entryValue = signedEntryValue(entry);
+
+                    return (
+                      <tr
+                        className={`[&>td]:px-2 [&>td]:transition [&>td:first-child]:rounded-l-md [&>td:last-child]:rounded-r-md ${entryRowStyles[entry.type]}`}
+                        key={entry.id}
+                        title={entry.type}
+                      >
+                        <td className="py-2">
+                          <span
+                            aria-label={entry.type}
+                            className={`block size-2.5 rounded-full ${entryTypeDotStyles[entry.type]}`}
+                            title={entry.type}
+                          />
+                        </td>
+                        <td className="py-2" title={entry.date}>{formatDisplayDate(entry.date)}</td>
+                        <td className="py-2">
                           {entry.bank_label}
-                        </span>
-                      </td>
-                      <td className="py-2">
-                        {entry.type === "expense" ? "- " : ""}
-                        {formatCurrency(entry.value)}
-                      </td>
-                      <td className="py-2">{entry.description}</td>
-                      <td className="py-2 text-right">
-                        <button
-                          aria-label="Editar lançamento"
-                          className={entry.type === "transfer"
-                            ? "hidden"
-                            : "inline-flex size-8 items-center justify-center rounded-md transition hover:bg-muted"}
-                          onClick={() => setEditingEntry(entry)}
-                          title="Editar lançamento"
-                          type="button"
-                        >
-                          <Pencil aria-hidden="true" className="size-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className={`py-2 tabular-nums ${entryValueStyles[entry.type]}`}>
+                          <span className="inline-grid grid-cols-[0.75rem_auto] justify-start">
+                            <span>{entryValue < 0 ? "-" : ""}</span>
+                            <span>{formatCurrency(Math.abs(entryValue))}</span>
+                          </span>
+                        </td>
+                        <td className="py-2">{entry.description}</td>
+                        <td className="py-2 text-right">
+                          <div className="flex justify-end gap-1">
+                            <button
+                              aria-label={entry.type === "transfer" ? "Editar transferência" : "Editar lançamento"}
+                              className="inline-flex size-8 items-center justify-center rounded-md transition hover:bg-muted"
+                              onClick={() => {
+                                if (entry.type === "transfer") {
+                                  editTransfer(entry);
+                                  return;
+                                }
+
+                                setEditingEntry(entry);
+                              }}
+                              title={entry.type === "transfer" ? "Editar transferência" : "Editar lançamento"}
+                              type="button"
+                            >
+                              <Pencil aria-hidden="true" className="size-4" />
+                            </button>
+                            <button
+                              aria-label={entry.type === "transfer" ? "Remover transferência" : "Remover lançamento"}
+                              className="inline-flex size-8 items-center justify-center rounded-md text-destructive transition hover:bg-muted"
+                              onClick={() => removeEntry(entry)}
+                              title={entry.type === "transfer" ? "Remover transferência" : "Remover lançamento"}
+                              type="button"
+                            >
+                              <Trash2 aria-hidden="true" className="size-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {filteredEntries.length === 0 && (
                     <tr>
                       <td className="py-8 text-center text-muted-foreground" colSpan={6}>
@@ -237,6 +314,13 @@ function FinancialFeature({
                 </tbody>
               </table>
             </div>
+            <p className="border-t border-border pt-3 text-xs text-muted-foreground">
+              Mostrando
+              {" "}
+              {filteredEntries.length}
+              {" "}
+              {filteredEntries.length === 1 ? "lançamento" : "lançamentos"}
+            </p>
           </section>
         </div>
       </section>
@@ -270,6 +354,15 @@ function FinancialFeature({
         />
       )}
 
+      {editingTransfer && (
+        <TransferDialog
+          banks={banks}
+          onClose={() => setEditingTransfer(null)}
+          onSaved={handleTransferSaved}
+          transfer={editingTransfer}
+        />
+      )}
+
       {isDataDialogOpen && (
         <BankDialog
           banks={banks}
@@ -278,6 +371,28 @@ function FinancialFeature({
         />
       )}
     </>
+  );
+}
+
+function BankPeriodStat({
+  label,
+  prefix,
+  value,
+}: {
+  label: string;
+  prefix: string;
+  value: number;
+}) {
+  const formattedValue = `${prefix} ${formatSignedPercent(value)}`;
+
+  return (
+    <span
+      aria-label={`${label}: ${formatSignedPercent(value)}`}
+      className={`rounded border border-border/60 bg-muted/35 px-2 py-1 text-center text-xs leading-none tabular-nums ${percentColorClass(value)}`}
+      title={label}
+    >
+      {formattedValue}
+    </span>
   );
 }
 
@@ -439,13 +554,71 @@ function Modal({
 function totalForBank(entries: FinancialEntry[], bank: string) {
   return entries
     .filter(entry => entry.bank === bank)
-    .reduce((sum, entry) => {
-      if (entry.type === "expense") {
-        return sum - entry.value;
-      }
+    .reduce((sum, entry) => sum + signedEntryValue(entry), 0);
+}
 
-      return sum + entry.value;
-    }, 0);
+function periodPercentForBank(
+  entries: FinancialEntry[],
+  bank: string,
+  period: "month" | "year",
+  bankTotal: number,
+) {
+  if (bankTotal === 0) {
+    return 0;
+  }
+
+  const today = new Date();
+  const firstDate = period === "month"
+    ? new Date(today.getFullYear(), today.getMonth(), 1)
+    : new Date(today.getFullYear(), today.getMonth() - 11, 1);
+  const periodTotal = entries
+    .filter(entry => entry.bank === bank && isDateBetween(parseEntryDate(entry.date), firstDate, today))
+    .reduce((sum, entry) => sum + signedEntryValue(entry), 0);
+
+  return (periodTotal / Math.abs(bankTotal)) * 100;
+}
+
+function signedEntryValue(entry: FinancialEntry) {
+  if (entry.type === "expense") {
+    return -entry.value;
+  }
+
+  return entry.value;
+}
+
+function buildTransferDraft(entries: FinancialEntry[], entry: FinancialEntry): FinancialTransferDraft | null {
+  const transferId = transferPairId(entry.id);
+
+  if (!transferId) {
+    return null;
+  }
+
+  const outgoingEntry = entries.find(item => item.id === `${transferId}-out`);
+  const incomingEntry = entries.find(item => item.id === `${transferId}-in`);
+
+  if (!outgoingEntry || !incomingEntry) {
+    return null;
+  }
+
+  return {
+    date: outgoingEntry.date,
+    from_bank: outgoingEntry.bank,
+    id: entry.id,
+    to_bank: incomingEntry.bank,
+    value: Math.abs(outgoingEntry.value),
+  };
+}
+
+function transferPairId(id: string) {
+  if (id.endsWith("-out")) {
+    return id.slice(0, -4);
+  }
+
+  if (id.endsWith("-in")) {
+    return id.slice(0, -3);
+  }
+
+  return null;
 }
 
 function isEntryInRange(value: string, range: Exclude<EntryRange, "all">) {
@@ -455,7 +628,11 @@ function isEntryInRange(value: string, range: Exclude<EntryRange, "all">) {
     ? new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29)
     : new Date(today.getFullYear(), today.getMonth() - 11, 1);
 
-  return entryDate >= firstDate && entryDate <= today;
+  return isDateBetween(entryDate, firstDate, today);
+}
+
+function isDateBetween(date: Date, firstDate: Date, lastDate: Date) {
+  return date >= firstDate && date <= lastDate;
 }
 
 function parseEntryDate(value: string) {
@@ -477,6 +654,32 @@ function formatDisplayDate(value: string) {
     month: "short",
     year: "numeric",
   }).format(date);
+}
+
+function formatSignedPercent(value: number) {
+  const sign = value >= 0 ? "+ " : "- ";
+
+  return `${sign}${formatPercent(Math.abs(value))}`;
+}
+
+function percentColorClass(value: number) {
+  if (value > 0) {
+    return "text-green-600";
+  }
+
+  if (value < 0) {
+    return "text-red-500";
+  }
+
+  return "text-muted-foreground";
+}
+
+function formatPercent(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+    style: "percent",
+  }).format(value / 100);
 }
 
 export default FinancialFeature;

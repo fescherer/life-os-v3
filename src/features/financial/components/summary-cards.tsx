@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Landmark } from "lucide-react";
+import { ArrowDown, ArrowRightLeft, ArrowUp, Landmark } from "lucide-react";
 import { useMemo } from "react";
 import { FinancialEntryType } from "../types";
 
@@ -25,9 +25,9 @@ function SummaryCard({
       <Icon aria-hidden="true" className={`size-8 shrink-0 ${iconClassName}`} strokeWidth={2} />
       <div className="min-w-0 flex-1">
         <h3 className="text-sm text-foreground">{label}</h3>
-        <p className="mt-2 text-3xl leading-none">
-          {isNegative ? "- " : ""}
-          {formatCurrency(amount)}
+        <p className="mt-2 inline-grid grid-cols-[1.25rem_auto] text-3xl leading-none tabular-nums">
+          <span>{isNegative ? "-" : ""}</span>
+          <span>{formatCurrency(amount)}</span>
         </p>
       </div>
       <div className="grid gap-3 text-center text-xs">
@@ -49,8 +49,11 @@ export function SummaryCards({ entries }: { entries: FinancialSummaryEntry[] }) 
     const investment = entries
       .filter(entry => entry.type === "investment")
       .reduce((sum, entry) => sum + entry.value, 0);
+    const transfer = entries
+      .filter(entry => entry.type === "transfer" && entry.value > 0)
+      .reduce((sum, entry) => sum + entry.value, 0);
 
-    return { expense, income, investment };
+    return { expense, income, investment, transfer };
   }, [entries]);
 
   return (
@@ -73,6 +76,12 @@ export function SummaryCards({ entries }: { entries: FinancialSummaryEntry[] }) 
         icon={Landmark}
         iconClassName="text-blue-300"
         label="Investments"
+      />
+      <SummaryCard
+        amount={totals.transfer}
+        icon={ArrowRightLeft}
+        iconClassName="text-purple-300"
+        label="Transfers"
       />
     </>
   );

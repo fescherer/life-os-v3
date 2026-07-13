@@ -140,6 +140,15 @@ struct UpdateFinancialEntryInput {
     description: String,
 }
 
+#[derive(Deserialize)]
+struct UpdateFinancialTransferInput {
+    id: String,
+    date: String,
+    from_bank: String,
+    to_bank: String,
+    value: i64,
+}
+
 #[derive(Deserialize, Serialize)]
 struct FinancialEntryData {
     #[serde(rename = "type")]
@@ -1325,6 +1334,128 @@ fn update_financial_entry(app: AppHandle, entry: UpdateFinancialEntryInput) -> R
     }
 
     Ok(())
+}
+
+#[tauri::command]
+fn remove_financial_entry(app: AppHandle, id: String) -> Result<(), String> {
+    let connection = connect(&app)?;
+    let removed = connection
+        .execute(
+            "DELETE FROM features WHERE feature = 'financial' AND id = ?1",
+            params![id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if removed == 0 {
+        return Err("Financial entry does not exist".to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn update_financial_transfer(
+    app: AppHandle,
+    transfer: UpdateFinancialTransferInput,
+) -> Result<(), String> {
+    if transfer.value <= 0 {
+        return Err("Value must be greater than zero".to_string());
+    }
+
+    if transfer.from_bank == transfer.to_bank {
+        return Err("Transfer banks must be different".to_string());
+    }
+
+    let mut connection = connect(&app)?;
+    let bank_options = load_bank_options(&connection)?;
+    let from_bank = bank_options
+        .iter()
+        .find(|option| option.value == transfer.from_bank)
+        .ok_or_else(|| "Selected source bank does not exist".to_string())?;
+    let to_bank = bank_options
+        .iter()
+        .find(|option| option.value == transfer.to_bank)
+        .ok_or_else(|| "Selected destination bank does not exist".to_string())?;
+    let transfer_id = transfer_pair_id(&transfer.id)?;
+    let description = format!(
+        "Transferência de banco {} para banco {}",
+        from_bank.label, to_bank.label
+    );
+    let outgoing_data = json!({
+        "type": "transfer",
+        "date": transfer.date,
+        "bank": transfer.from_bank,
+        "value": -transfer.value,
+        "description": description
+    })
+    .to_string();
+    let incoming_data = json!({
+        "type": "transfer",
+        "date": transfer.date,
+        "bank": transfer.to_bank,
+        "value": transfer.value,
+        "description": description
+    })
+    .to_string();
+    let transaction = connection.transaction().map_err(|error| error.to_string())?;
+    let outgoing_updated = transaction
+        .execute(
+            "UPDATE features
+            SET data = ?1, updated_at = CURRENT_TIMESTAMP
+            WHERE feature = 'financial' AND id = ?2",
+            params![outgoing_data, format!("{transfer_id}-out")],
+        )
+        .map_err(|error| error.to_string())?;
+    let incoming_updated = transaction
+        .execute(
+            "UPDATE features
+            SET data = ?1, updated_at = CURRENT_TIMESTAMP
+            WHERE feature = 'financial' AND id = ?2",
+            params![incoming_data, format!("{transfer_id}-in")],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if outgoing_updated == 0 || incoming_updated == 0 {
+        return Err("Financial transfer does not exist".to_string());
+    }
+
+    transaction.commit().map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_financial_transfer(app: AppHandle, id: String) -> Result<(), String> {
+    let mut connection = connect(&app)?;
+    let transfer_id = transfer_pair_id(&id)?;
+    let transaction = connection.transaction().map_err(|error| error.to_string())?;
+    let outgoing_removed = transaction
+        .execute(
+            "DELETE FROM features WHERE feature = 'financial' AND id = ?1",
+            params![format!("{transfer_id}-out")],
+        )
+        .map_err(|error| error.to_string())?;
+    let incoming_removed = transaction
+        .execute(
+            "DELETE FROM features WHERE feature = 'financial' AND id = ?1",
+            params![format!("{transfer_id}-in")],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if outgoing_removed == 0 || incoming_removed == 0 {
+        return Err("Financial transfer does not exist".to_string());
+    }
+
+    transaction.commit().map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+fn transfer_pair_id(id: &str) -> Result<String, String> {
+    id.strip_suffix("-out")
+        .or_else(|| id.strip_suffix("-in"))
+        .map(str::to_string)
+        .ok_or_else(|| "Invalid financial transfer id".to_string())
 }
 
 fn copy_coin_image(app: &AppHandle, coin_id: &str, source_path: &str) -> Result<String, String> {
@@ -4012,6 +4143,9 @@ pub fn run() {
             add_financial_entry,
             add_financial_transfer,
             update_financial_entry,
+            remove_financial_entry,
+            update_financial_transfer,
+            remove_financial_transfer,
             list_bank_options,
             add_bank_option,
             update_bank_option,
