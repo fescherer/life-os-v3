@@ -60,6 +60,7 @@ type Asset = {
   type: string;
   full_name: string;
   color?: string;
+  average_price: number;
   type_label: string;
   type_color: string;
 };
@@ -157,6 +158,7 @@ function AssetsFeature({
   const [assetTypeFilter, setAssetTypeFilter] = useState("all");
   const [chartRange, setChartRange] = useState<AssetChartRange>("12-months");
   const [editingRegister, setEditingRegister] = useState<AssetRegister | null>(null);
+  const [editingAveragePriceAsset, setEditingAveragePriceAsset] = useState<Asset | null>(null);
   const [isAssetManagerOpen, setIsAssetManagerOpen] = useState(false);
   const [status, setStatus] = useState("");
 
@@ -537,7 +539,7 @@ function AssetsFeature({
                   <th className="pb-3">Tipo</th>
                   <th className="pb-3">Qnt</th>
                   <th className="pb-3">Total</th>
-                  <th className="pb-3">MÃ©dia</th>
+                  <th className="pb-3">Média</th>
                   <th className="pb-3">DY</th>
                 </tr>
               </thead>
@@ -548,7 +550,19 @@ function AssetsFeature({
                     <td className="py-2">{shortTypeLabel(row.asset.type_label)}</td>
                     <td className="py-2">{formatQuantity(row.quantity)}</td>
                     <td className="py-2">{formatCurrency(row.total)}</td>
-                    <td className="py-2">{formatCurrency(row.average)}</td>
+                    <td className="py-2">
+                      <div className="flex items-center gap-2">
+                        <span>{formatCurrency(row.average)}</span>
+                        <button
+                          aria-label={`Editar preço médio de ${row.asset.ticker}`}
+                          className="flex h-8 w-8 items-center justify-center rounded-md border border-border transition hover:bg-accent"
+                          onClick={() => setEditingAveragePriceAsset(row.asset)}
+                          type="button"
+                        >
+                          <Pencil aria-hidden="true" className="size-4" />
+                        </button>
+                      </div>
+                    </td>
                     <td className="py-2">{formatPercent(row.dividendYield)}</td>
                   </tr>
                 ))}
@@ -589,6 +603,17 @@ function AssetsFeature({
         />
       )}
 
+      {editingAveragePriceAsset && (
+        <AveragePriceDialog
+          asset={editingAveragePriceAsset}
+          onClose={() => setEditingAveragePriceAsset(null)}
+          onSaved={async () => {
+            setEditingAveragePriceAsset(null);
+            await loadAssetsData();
+          }}
+        />
+      )}
+
       {isAssetManagerOpen && (
         <Modal onClose={() => setIsAssetManagerOpen(false)} title="Gerenciar dados- Assets">
           <AssetManager assets={assets} onChanged={handleChanged} types={types} />
@@ -614,6 +639,89 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
       <span className="block text-muted-foreground">{label}</span>
       <strong className="mt-1 block text-sm text-foreground">{value}</strong>
     </div>
+  );
+}
+
+function AveragePriceDialog({
+  asset,
+  onClose,
+  onSaved,
+}: {
+  asset: Asset;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}) {
+  const [averagePrice, setAveragePrice] = useState(() => formatCurrency(asset.average_price));
+  const [error, setError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  async function saveAveragePrice() {
+    if (!averagePrice.trim()) {
+      setError("Informe o preço médio.");
+      return;
+    }
+
+    setIsSaving(true);
+    setError("");
+
+    try {
+      await invoke("update_asset", {
+        asset: {
+          asset_type: asset.type,
+          average_price: parseCurrencyToCents(averagePrice),
+          color: asset.color,
+          full_name: asset.full_name,
+          id: asset.id,
+          ticker: asset.ticker,
+        },
+      });
+      await onSaved();
+    }
+    catch (saveError) {
+      setError(String(saveError));
+    }
+    finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose} title={`${asset.ticker} - Preço médio`}>
+      <div className="grid gap-6">
+        <label className="grid gap-3 text-sm text-muted-foreground">
+          Preço médio
+          <input
+            autoFocus
+            className="h-10 rounded-md border border-border bg-sidebar px-3 text-sm text-foreground outline-none"
+            inputMode="decimal"
+            onChange={event => setAveragePrice(event.currentTarget.value)}
+            onFocus={event => event.currentTarget.select()}
+            value={averagePrice}
+          />
+        </label>
+
+        {error && <p className="text-xs text-destructive">{error}</p>}
+
+        <div className="flex items-center justify-end gap-3">
+          <button
+            className="h-10 rounded-md px-4 text-sm text-muted-foreground"
+            onClick={onClose}
+            type="button"
+          >
+            Cancelar
+          </button>
+          <button
+            className="flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+            disabled={isSaving}
+            onClick={saveAveragePrice}
+            type="button"
+          >
+            <Save aria-hidden="true" className="size-4" />
+            Salvar
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -970,6 +1078,7 @@ function AssetManager({
       await invoke("update_asset", {
         asset: {
           asset_type: asset.type,
+          average_price: asset.average_price,
           color: asset.color,
           full_name: asset.full_name,
           id: asset.id,
@@ -1330,24 +1439,14 @@ function buildPortfolioRows(assets: Asset[], registers: AssetRegister[]): Portfo
 
         return sum;
       }, 0);
-      const total = assetRegisters.reduce((sum, register) => {
-        if (register.type === "buy") {
-          return sum + totalForRegister(register);
-        }
-
-        if (register.type === "sell") {
-          return sum - totalForRegister(register);
-        }
-
-        return sum;
-      }, 0);
+      const total = Math.round(asset.average_price * quantity);
       const dividends = assetRegisters
         .filter(register => register.type === "dividend")
         .reduce((sum, register) => sum + totalForRegister(register), 0);
 
       return {
         asset,
-        average: quantity > 0 ? total / quantity : 0,
+        average: asset.average_price,
         dividendYield: safePercent(dividends, total),
         dividends,
         quantity,

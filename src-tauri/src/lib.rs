@@ -205,6 +205,7 @@ struct UpdateAssetInput {
     asset_type: String,
     full_name: String,
     color: String,
+    average_price: i64,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -215,6 +216,8 @@ struct AssetData {
     full_name: String,
     #[serde(default = "default_asset_color")]
     color: String,
+    #[serde(default)]
+    average_price: i64,
 }
 
 #[derive(Serialize)]
@@ -837,7 +840,86 @@ fn migrate_financial_database(connection: &Connection) -> Result<(), String> {
         )
         .map_err(|error| error.to_string())?;
 
+    migrate_asset_average_prices(connection)?;
+
     Ok(())
+}
+
+fn migrate_asset_average_prices(connection: &Connection) -> Result<(), String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT id FROM features
+            WHERE feature = 'asset'
+            AND json_type(data, '$.average_price') IS NULL",
+        )
+        .map_err(|error| error.to_string())?;
+    let asset_ids = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    drop(statement);
+
+    for asset_id in asset_ids {
+        let average_price = calculate_asset_average_price(connection, &asset_id)?;
+
+        connection
+            .execute(
+                "UPDATE features
+                SET data = json_set(data, '$.average_price', ?1)
+                WHERE feature = 'asset' AND id = ?2",
+                params![average_price, asset_id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
+}
+
+fn calculate_asset_average_price(connection: &Connection, asset_id: &str) -> Result<i64, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT data FROM features
+            WHERE feature = 'assets_register'
+            AND json_extract(data, '$.asset') = ?1
+            ORDER BY json_extract(data, '$.date') ASC, created_at ASC",
+        )
+        .map_err(|error| error.to_string())?;
+    let registers = statement
+        .query_map(params![asset_id], |row| {
+            let data_json: String = row.get(0)?;
+
+            serde_json::from_str::<AssetRegisterData>(&data_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    let mut average_price = 0;
+    let mut quantity = 0.0;
+
+    for register in registers {
+        match register.register_type.as_str() {
+            "buy" => {
+                average_price = calculate_average_price(
+                    average_price,
+                    quantity,
+                    register.price,
+                    register.quantity,
+                );
+                quantity += register.quantity;
+            }
+            "sell" => quantity -= register.quantity,
+            _ => {}
+        }
+    }
+
+    Ok(average_price)
 }
 
 fn table_exists(connection: &Connection, table_name: &str) -> Result<bool, String> {
@@ -1808,7 +1890,8 @@ fn add_asset(app: AppHandle, asset: AssetInput) -> Result<(), String> {
         "ticker": ticker,
         "type": asset.asset_type,
         "full_name": full_name,
-        "color": color
+        "color": color,
+        "average_price": 0
     })
     .to_string();
 
@@ -1830,6 +1913,10 @@ fn update_asset(app: AppHandle, asset: UpdateAssetInput) -> Result<(), String> {
     let full_name = asset.full_name.trim();
     let color = normalize_color(&asset.color);
 
+    if asset.average_price < 0 {
+        return Err("Average price cannot be negative".to_string());
+    }
+
     if full_name.is_empty() {
         return Err("Asset full name is required".to_string());
     }
@@ -1849,7 +1936,8 @@ fn update_asset(app: AppHandle, asset: UpdateAssetInput) -> Result<(), String> {
         "ticker": ticker,
         "type": asset.asset_type,
         "full_name": full_name,
-        "color": color
+        "color": color,
+        "average_price": asset.average_price
     })
     .to_string();
 
@@ -1975,7 +2063,7 @@ fn add_asset_register(app: AppHandle, register: AssetRegisterInput) -> Result<()
         return Err("Price must be greater than zero".to_string());
     }
 
-    let connection = connect(&app)?;
+    let mut connection = connect(&app)?;
     let banks = load_select_options(&connection, "asset_banks")?;
     let assets = load_assets(&connection)?;
 
@@ -1983,9 +2071,21 @@ fn add_asset_register(app: AppHandle, register: AssetRegisterInput) -> Result<()
         return Err("Selected bank does not exist".to_string());
     }
 
-    if !assets.iter().any(|asset| asset.id == register.asset) {
-        return Err("Selected asset does not exist".to_string());
-    }
+    let asset = assets
+        .iter()
+        .find(|asset| asset.id == register.asset)
+        .ok_or_else(|| "Selected asset does not exist".to_string())?;
+    let current_quantity = load_asset_quantity(&connection, &register.asset)?;
+    let average_price = if register.register_type == "buy" {
+        calculate_average_price(
+            asset.data.average_price,
+            current_quantity,
+            register.price,
+            register.quantity,
+        )
+    } else {
+        asset.data.average_price
+    };
 
     let data = json!({
         "type": register.register_type,
@@ -1997,12 +2097,29 @@ fn add_asset_register(app: AppHandle, register: AssetRegisterInput) -> Result<()
     })
     .to_string();
 
-    connection
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+
+    transaction
         .execute(
             "INSERT INTO features (id, feature, data) VALUES (?1, 'assets_register', ?2)",
             params![format!("assets-register-{}", current_timestamp_id()?), data],
         )
         .map_err(|error| error.to_string())?;
+
+    if register.register_type == "buy" || register.register_type == "sell" {
+        transaction
+            .execute(
+                "UPDATE features
+                SET data = json_set(data, '$.average_price', ?1), updated_at = CURRENT_TIMESTAMP
+                WHERE feature = 'asset' AND id = ?2",
+                params![average_price, register.asset],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    transaction.commit().map_err(|error| error.to_string())?;
 
     Ok(())
 }
@@ -3882,6 +3999,40 @@ fn validate_asset_register_type(register_type: &str) -> Result<(), String> {
         "dividend" | "buy" | "sell" => Ok(()),
         _ => Err("Invalid asset launch type".to_string()),
     }
+}
+
+fn load_asset_quantity(connection: &Connection, asset_id: &str) -> Result<f64, String> {
+    connection
+        .query_row(
+            "SELECT COALESCE(SUM(
+                CASE json_extract(data, '$.type')
+                    WHEN 'buy' THEN json_extract(data, '$.quantity')
+                    WHEN 'sell' THEN -json_extract(data, '$.quantity')
+                    ELSE 0
+                END
+            ), 0)
+            FROM features
+            WHERE feature = 'assets_register'
+            AND json_extract(data, '$.asset') = ?1",
+            params![asset_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn calculate_average_price(
+    current_average_price: i64,
+    current_quantity: f64,
+    purchase_price: i64,
+    purchase_quantity: f64,
+) -> i64 {
+    if current_quantity <= 0.0 {
+        return purchase_price;
+    }
+
+    ((current_average_price as f64 * current_quantity + purchase_price as f64 * purchase_quantity)
+        / (current_quantity + purchase_quantity))
+        .round() as i64
 }
 
 fn normalize_color(color: &str) -> String {
