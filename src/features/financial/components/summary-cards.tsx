@@ -21,18 +21,16 @@ function SummaryCard({
   label: string;
 }) {
   return (
-    <article className="flex min-h-28 items-center gap-5 rounded-md border border-border bg-sidebar p-3">
+    <article className="grid min-h-28 grid-cols-[2rem_minmax(0,1fr)] items-center gap-x-4 gap-y-3 rounded-md border border-border bg-sidebar p-4">
       <Icon aria-hidden="true" className={`size-8 shrink-0 ${iconClassName}`} strokeWidth={2} />
-      <div className="min-w-0 flex-1">
-        <h3 className="text-sm text-foreground">{label}</h3>
-        <p className="mt-2 inline-grid grid-cols-[1.25rem_auto] text-3xl leading-none tabular-nums">
-          <span>{isNegative ? "-" : ""}</span>
-          <span>{formatCurrency(amount)}</span>
-        </p>
-      </div>
-      <div className="grid gap-3 text-center text-xs">
-        <span className="rounded bg-muted px-5 py-2">+ 2%</span>
-        <span className="rounded bg-muted px-5 py-2">+ 12%</span>
+      <h3 className="text-sm text-foreground">{label}</h3>
+      <p className="mt-2 inline-grid grid-cols-[1.25rem_auto] whitespace-nowrap text-2xl leading-none tabular-nums">
+        <span>{isNegative ? "-" : ""}</span>
+        <span>{formatCurrency(amount)}</span>
+      </p>
+      <div className="col-span-2 grid grid-cols-2 gap-3 text-center text-xs">
+        <span className="rounded bg-muted px-3 py-2">+ 2%</span>
+        <span className="rounded bg-muted px-3 py-2">+ 12%</span>
       </div>
     </article>
   );
@@ -57,7 +55,7 @@ export function SummaryCards({ entries }: { entries: FinancialSummaryEntry[] }) 
   }, [entries]);
 
   return (
-    <>
+    <div className="grid grid-cols-2 gap-4">
       <SummaryCard
         amount={totals.income}
         icon={ArrowUp}
@@ -83,7 +81,7 @@ export function SummaryCards({ entries }: { entries: FinancialSummaryEntry[] }) 
         iconClassName="text-purple-300"
         label="Transfers"
       />
-    </>
+    </div>
   );
 }
 

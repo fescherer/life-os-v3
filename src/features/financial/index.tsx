@@ -173,8 +173,8 @@ function FinancialFeature({
 
   return (
     <>
-      <section className="grid h-[calc(100vh-8.5rem)] min-h-0 gap-4 overflow-hidden lg:grid-cols-5">
-        <div className="grid min-h-0 gap-4 overflow-y-auto pr-1 lg:col-span-2">
+      <section className="grid h-[calc(100vh-10.5rem)] min-h-0 gap-4 overflow-hidden lg:grid-cols-5">
+        <div className="grid min-h-0 content-start gap-4 overflow-y-auto pr-1 lg:col-span-2">
           <ChartFinancialRecords entries={entries} />
           <SummaryCards entries={entries} />
         </div>
